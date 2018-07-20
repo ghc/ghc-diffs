@@ -751,8 +751,8 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
       MO_F_Gt _ -> condFltReg is32Bit GTT x y
       MO_F_Ge _ -> condFltReg is32Bit GE  x y
       -- See Note [SSE Parity Checks]
-      MO_F_Lt _ -> condFltReg is32Bit GE  y x
-      MO_F_Le _ -> condFltReg is32Bit GTT y x
+      MO_F_Lt _ -> condFltReg is32Bit GTT  y x
+      MO_F_Le _ -> condFltReg is32Bit GE   y x
 
       MO_Eq _   -> condIntReg EQQ x y
       MO_Ne _   -> condIntReg NE  x y
@@ -1367,8 +1367,8 @@ getCondCode (CmmMachOp mop [x, y])
       MO_F_Gt W32 -> condFltCode GTT x y
       MO_F_Ge W32 -> condFltCode GE  x y
       -- See Note [SSE Parity Checks]
-      MO_F_Lt W32 -> condFltCode GE  y x
-      MO_F_Le W32 -> condFltCode GTT y x
+      MO_F_Lt W32 -> condFltCode GTT  y x
+      MO_F_Le W32 -> condFltCode GE   y x
 
       MO_F_Eq W64 -> condFltCode EQQ x y
       MO_F_Ne W64 -> condFltCode NE  x y
@@ -2930,7 +2930,7 @@ condIntReg cond x y = do
 -- By reversing comparisons we can avoid testing the parity
 -- for < and <= as well. If any of the arguments is an NaN we
 -- return false either way. If both arguments are valid then
--- x <= y  <->  y > x  holds.
+-- x <= y  <->  y >= x  holds. So it's safe to swap these.
 
 -- We invert the condition inside getRegister'and  getCondCode
 -- which should cover all invertable cases.
