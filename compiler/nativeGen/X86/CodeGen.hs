@@ -750,8 +750,9 @@ getRegister' _ is32Bit (CmmMachOp mop [x, y]) = do -- dyadic MachOps
       MO_F_Ne _ -> condFltReg is32Bit NE  x y
       MO_F_Gt _ -> condFltReg is32Bit GTT x y
       MO_F_Ge _ -> condFltReg is32Bit GE  x y
-      MO_F_Lt _ -> condFltReg is32Bit LTT x y
-      MO_F_Le _ -> condFltReg is32Bit LE  x y
+      -- See Note [SSE Parity Checks]
+      MO_F_Lt _ -> condFltReg is32Bit GE  y x
+      MO_F_Le _ -> condFltReg is32Bit GTT y x
 
       MO_Eq _   -> condIntReg EQQ x y
       MO_Ne _   -> condIntReg NE  x y
@@ -1365,15 +1366,16 @@ getCondCode (CmmMachOp mop [x, y])
       MO_F_Ne W32 -> condFltCode NE  x y
       MO_F_Gt W32 -> condFltCode GTT x y
       MO_F_Ge W32 -> condFltCode GE  x y
-      MO_F_Lt W32 -> condFltCode LTT x y
-      MO_F_Le W32 -> condFltCode LE  x y
+      -- See Note [SSE Parity Checks]
+      MO_F_Lt W32 -> condFltCode GE  y x
+      MO_F_Le W32 -> condFltCode GTT y x
 
       MO_F_Eq W64 -> condFltCode EQQ x y
       MO_F_Ne W64 -> condFltCode NE  x y
       MO_F_Gt W64 -> condFltCode GTT x y
       MO_F_Ge W64 -> condFltCode GE  x y
-      MO_F_Lt W64 -> condFltCode LTT x y
-      MO_F_Le W64 -> condFltCode LE  x y
+      MO_F_Lt W64 -> condFltCode GE  y x
+      MO_F_Le W64 -> condFltCode GTT y x
 
       _ -> condIntCode (machOpToCond mop) x y
 
@@ -1673,7 +1675,7 @@ genCondJump' _ id bool = do
     else do
         lbl <- getBlockIdNat
 
-        -- see comment with condFltReg
+        -- See Note [SSE Parity Checks]
         let code = case cond of
                         NE  -> or_unordered
                         GU  -> plain_test
@@ -2910,6 +2912,30 @@ condIntReg cond x y = do
   return (Any II32 code)
 
 
+-----------------------------------------------------------
+---          Note [SSE Parity Checks]                   ---
+-----------------------------------------------------------
+
+-- We have to worry about unordered operands (eg. comparisons
+-- against NaN).  If the operands are unordered, the comparison
+-- sets the parity flag, carry flag and zero flag.
+-- All comparisons are supposed to return false for unordered
+-- operands except for !=, which returns true.
+--
+-- Optimisation: we don't have to test the parity flag if we
+-- know the test has already excluded the unordered case: eg >
+-- and >= test for a zero carry flag, which can only occur for
+-- ordered operands.
+--
+-- By reversing comparisons we can avoid testing the parity
+-- for < and <= as well. If any of the arguments is an NaN we
+-- return false either way. If both arguments are valid then
+-- x <= y  <->  y > x  holds.
+
+-- We invert the condition inside getRegister'and  getCondCode
+-- which should cover all invertable cases.
+-- All other relevant functions should call these in the end.
+
 
 condFltReg :: Bool -> Cond -> CmmExpr -> CmmExpr -> NatM Register
 condFltReg is32Bit cond x y = if_sse2 condFltReg_sse2 condFltReg_x87
@@ -2928,21 +2954,7 @@ condFltReg is32Bit cond x y = if_sse2 condFltReg_sse2 condFltReg_x87
     CondCode _ cond cond_code <- condFltCode cond x y
     tmp1 <- getNewRegNat (archWordFormat is32Bit)
     tmp2 <- getNewRegNat (archWordFormat is32Bit)
-    let
-        -- We have to worry about unordered operands (eg. comparisons
-        -- against NaN).  If the operands are unordered, the comparison
-        -- sets the parity flag, carry flag and zero flag.
-        -- All comparisons are supposed to return false for unordered
-        -- operands except for !=, which returns true.
-        --
-        -- Optimisation: we don't have to test the parity flag if we
-        -- know the test has already excluded the unordered case: eg >
-        -- and >= test for a zero carry flag, which can only occur for
-        -- ordered operands.
-        --
-        -- ToDo: by reversing comparisons we could avoid testing the
-        -- parity flag in more cases.
-
+    let -- See Note [SSE Parity Checks]
         code dst =
            cond_code `appOL`
              (case cond of
