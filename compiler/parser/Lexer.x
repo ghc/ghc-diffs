@@ -73,8 +73,8 @@ module Lexer (
    lexTokenStream,
    addAnnotation,AddAnn,addAnnsAt,mkParensApiAnn,
    commentToAnnotation,
-   removeLastCommentNext,
-   removeFirstCommentPrev,
+   removeLastCommentNext, removeAllCommentsNext,
+   removeFirstCommentPrev, removeAllCommentsPrev,
   ) where
 
 import GhcPrelude
@@ -2561,12 +2561,20 @@ mkTabWarning PState{tab_first=tf, tab_count=tc} d =
   in fmap (\s -> makeIntoWarning (Reason Opt_WarnTabs) $
                  mkWarnMsg d (RealSrcSpan s) alwaysQualify message) tf
 
+mkHaddockWarning :: PState -> DynFlags -> [ErrMsg]
+mkHaddockWarning PState{comment_next=cn, comment_prev=cp} d = map report (snd =<< (cn ++ cp))
+  where report tk = makeIntoWarning NoReason $
+         mkWarnMsg d (getLoc tk) alwaysQualify (text "Unexpected Haddock-style comment")
+
+
 getMessages :: PState -> DynFlags -> Messages
 getMessages p@PState{messages=m} d =
   let (ws, es) = m d
       tabwarning = mkTabWarning p d
+      haddockwarnings = mkHaddockWarning p d
       ws' = maybe ws (`consBag` ws) tabwarning
-  in (ws', es)
+      ws'' = ws' `unionBags` listToBag haddockwarnings
+  in (ws'', es)
 
 getContext :: P [LayoutContext]
 getContext = P $ \s@PState{context=ctx} -> POk s ctx
@@ -2635,6 +2643,9 @@ removeLastCommentNext s = join <$> removeCommentsNext s go
     go (L sp (ITdocCommentNext s) : rs) = (Just (L sp (mkHsDocString s)), rs)
     go rs = (Nothing, rs)
 
+removeAllCommentsNext :: SrcSpan -> P [Located Token]
+removeAllCommentsNext s = fromMaybe [] <$> removeCommentsNext s (\tks -> (reverse tks, []))
+
 addCommentsNext :: SrcLoc -> [Located Token] -> P ()
 addCommentsNext sloc ltoks = P $ \s@PState{ comment_next = nc } ->
                                    let newNc = case nc of
@@ -2673,6 +2684,9 @@ removeFirstCommentPrev s = join <$> removeCommentsPrev s go
     go [L sp (ITdocCommentPrev s)] = (Just (L sp (mkHsDocString s)), [])
     go (x : rs) = let ~(f, rs') = go rs in (f, x : rs')
     go [] = (Nothing, [])
+
+removeAllCommentsPrev :: SrcSpan -> P [Located Token]
+removeAllCommentsPrev s = fromMaybe [] <$> removeCommentsPrev s (\tks -> (reverse tks, []))
 
 addCommentsPrev :: SrcLoc -> [Located Token] -> P ()
 addCommentsPrev sloc ltoks = P $ \s@PState{ comment_prev = pc } ->
@@ -2777,9 +2791,11 @@ lexComments lexTokenFun = do
     rlTok@(L realSpan tok) <- lexTokenFun
     let lTok = L (RealSrcSpan realSpan) tok
     case tok of
-      ITdocCommentNext{} -> getNext (lTok : acc)
-      ITdocCommentPrev{} -> getNext acc
-      _ -> pure (reverse acc, rlTok)
+      ITdocCommentNext{}   -> getNext (lTok : acc)
+      ITdocCommentNamed{}  -> getNext (lTok : acc)
+      ITdocSection{}       -> getNext (lTok : acc)
+      ITdocCommentPrev{}   -> getNext acc
+      _                    -> pure (reverse acc, rlTok)
 
   getPrev :: [Located Token] -- ^ next '-- ^' docs
           -> P [Located Token]
@@ -2787,9 +2803,11 @@ lexComments lexTokenFun = do
     rlTok@(L realSpan tok) <- lexTokenFun
     let lTok = L (RealSrcSpan realSpan) tok
     case tok of
-      ITdocCommentNext{} -> getPrev acc
-      ITdocCommentPrev{} -> getPrev (lTok : acc)
-      _ -> pure (reverse acc)
+      ITdocCommentNext{}   -> getPrev acc
+      ITdocCommentNamed{}  -> getPrev acc
+      ITdocSection{}       -> getPrev acc
+      ITdocCommentPrev{}   -> getPrev (lTok : acc)
+      _                    -> pure (reverse acc)
 
 
 
