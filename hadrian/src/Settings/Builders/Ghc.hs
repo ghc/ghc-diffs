@@ -96,7 +96,15 @@ commonGhcArgs = do
 wayGhcArgs :: Args
 wayGhcArgs = do
     way <- getWay
-    mconcat [ if (Dynamic `wayUnit` way)
+    p <- getPackage
+    rtsWays <- getRtsWays
+    let
+        dynRts = any (Dynamic `wayUnit`) rtsWays
+        dynWay = Dynamic `wayUnit` way
+        dynamic = if p == ghc 
+                    then dynRts || dynWay
+                    else dynWay
+    mconcat [ if dynamic
               then pure ["-fPIC", "-dynamic"]
               else arg "-static"
             , (Threaded  `wayUnit` way) ? arg "-optc-DTHREADED_RTS"
