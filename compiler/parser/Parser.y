@@ -88,7 +88,7 @@ import GhcPrelude
 import qualified GHC.LanguageExtensions as LangExt
 }
 
-%expect 237 -- shift/reduce conflicts
+%expect 236 -- shift/reduce conflicts
 
 {- Last updated: 04 June 2018
 
@@ -1934,13 +1934,13 @@ constr_btype :: { LHsType GhcPs }
 constr_tyapps :: { Located [Located TyEl] } -- NB: This list is reversed
         : tyapp                         {% do { mdp <- removeFirstCommentPrev (getLoc $1)
                                               ; case mdp of
-                                                  Nothing -> sL1 $1 [$1]
-                                                  Just dp -> sLL $1 dp [ fmap TyElDocPrev dp
-                                                                       , $1 ] } }
+                                                  Nothing -> pure (sL1 $1 [$1])
+                                                  Just dp -> pure (sLL $1 dp [ fmap TyElDocPrev dp
+                                                                             , $1 ]) } }
         | constr_tyapps tyapp           {% do { mdp <- removeFirstCommentPrev (getLoc $2)
                                               ; case mdp of
-                                                  Nothing -> sLL $1 $> $ $2 : (unLoc $1)
-                                                  Just dp -> sLL $1 dp $ (fmap TyElDocPrev dp) : $2 : (unLoc $1) } }
+                                                  Nothing -> pure (sLL $1 $> $ $2 : (unLoc $1))
+                                                  Just dp -> pure (sLL $1 dp $ (fmap TyElDocPrev dp) : $2 : (unLoc $1)) } }
 
 btype :: { LHsType GhcPs }
         : tyapps                        {% mergeOps $1 }
@@ -2228,7 +2228,8 @@ They must be kept identical except for their treatment of 'docprev'.
 
 constr :: { LConDecl GhcPs }
         : forall constr_context '=>' constr_stuff
-                {% ams (let (con,details,doc_prev) = unLoc $4 in
+                {% do { md <- removeLastCommentNext (comb2 $1 $2)
+                      ; ams (let (con,details,doc_prev) = unLoc $4 in
                   addConDoc (L (comb4 $1 $2 $3 $4) (mkConDeclH98 con
                                                        (snd $ unLoc $1)
                                                        (Just $2)
