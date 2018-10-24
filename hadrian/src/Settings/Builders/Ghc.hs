@@ -7,6 +7,7 @@ import Flavour
 import Packages
 import Settings.Builders.Common
 import Settings.Warnings
+import qualified Context as Context
 
 ghcBuilderArgs :: Args
 ghcBuilderArgs = mconcat [compileAndLinkHs, compileC, findHsDependencies]
@@ -104,8 +105,24 @@ wayGhcArgs = do
         dynamic = if p == ghc 
                     then dynRts || dynWay
                     else dynWay
+
+    -- Get relative path from ouput (i.e. $ORIGIN) to libraries path.
+    originPath <- dropFileName <$> getOutput
+    context <- getContext
+    libPath' <- expr (libPath context)
+    distDir <- expr Context.distDir
+    let
+        distPath = libPath' -/- distDir
+        originToLibsDir = makeRelativeNoSysLink originPath distPath
     mconcat [ if dynamic
-              then pure ["-fPIC", "-dynamic"]
+              then mconcat
+                [ pure ["-fPIC", "-dynamic"]
+
+                -- TODO check OS?
+                -- NOTE:  $ORIGIN == getOutput
+                , notStage0 ? pure [ "-optl-Wl,-rpath"
+                                    , "-optl-Wl,"
+                                    ++ ("$ORIGIN" -/- originToLibsDir) ] ]
               else arg "-static"
             , (Threaded  `wayUnit` way) ? arg "-optc-DTHREADED_RTS"
             , (Debug     `wayUnit` way) ? arg "-optc-DDEBUG"

@@ -7,7 +7,7 @@ module Hadrian.Utilities (
     quote, yesNo, parseYesNo, zeroOne,
 
     -- * FilePath manipulation
-    unifyPath, (-/-),
+    unifyPath, (-/-), makeRelativeNoSysLink,
 
     -- * Accessing Shake's type-indexed map
     insertExtra, lookupExtra, userSetting,
@@ -37,6 +37,7 @@ import Control.Monad.Extra
 import Data.Char
 import Data.Dynamic (Dynamic, fromDynamic, toDyn)
 import Data.HashMap.Strict (HashMap)
+import Data.List (isPrefixOf)
 import Data.List.Extra
 import Data.Maybe
 import Data.Typeable (TypeRep, typeOf)
@@ -138,6 +139,75 @@ a  -/- b
     | otherwise     = a ++ '/' : b
 
 infixr 6 -/-
+
+-- | This is like Posix makeRelative, but assumes no sys links in the input
+-- paths. This allows the result to start with possibly many "../"s. Input
+-- paths must both be relative, or be on the same drive
+makeRelativeNoSysLink :: FilePath -> FilePath  -> FilePath
+makeRelativeNoSysLink a b
+    | aDrive == bDrive
+        = if null aToB
+            then "."
+            else joinPath aToB
+    | otherwise
+        = error $ (if isRelative a /= isRelative b
+            then "Paths must both be relative or both be absolute, but got"
+            else "Paths are on different drives ")
+                ++ " \"" ++ aDrive ++ "\" and \"" ++ aDrive ++ "\""
+    where
+        (aDrive, aRelPath) = splitDrive a
+        (bDrive, bRelPath) = splitDrive b
+
+        aRelSplit = normalizeIndirections (splitPath aRelPath)
+        bRelSplit = normalizeIndirections (splitPath bRelPath)
+
+        (baseToA, baseToB) = removePrefix aRelSplit bRelSplit
+        aToBase = if any isDirUp baseToA
+            then error $ "Unable to find relative path from \"" ++ a
+                       ++ "\"to \"" ++ b ++ "\""
+            else ".." <$ baseToA
+        aToB = aToBase ++ baseToB
+
+        -- removePrefix "pre123" "prefix456" == ("123", "fix456")
+        removePrefix :: Eq a => [a] -> [a] -> ([a], [a])
+        removePrefix as [] = (as, [])
+        removePrefix [] bs = ([], bs)
+        removePrefix (a:as) (b:bs)
+            | a == b    = removePrefix as bs
+            | otherwise = (a:as, b:bs)
+
+        isDirUp ".." = True
+        isDirUp "../" = True
+        isDirUp _ = False
+
+        isDot "." = True
+        isDot "./" = True
+        isDot _ = False
+
+        -- Tries to remove ".." and ".", but if there are too many ".."s
+        -- then some will appear at the start of the path.
+        normalizeIndirections :: [String] -> [String]
+        normalizeIndirections = reverse . normalizeIndirectionsRev . reverse
+            where
+                -- Remove "." and "..", takes reversed split path.
+                normalizeIndirectionsRev :: [String] -> [String]
+                -- Base case.
+                normalizeIndirectionsRev []          = []
+                -- Try to remove the next directory, else just use "../".
+                normalizeIndirectionsRev (x:xs)
+                    | isDirUp x
+                    = case normalizeIndirectionsRev xs of
+                        -- Starts with ".." implies there are no
+                        -- directories left to remove, so resort to using
+                        -- ".." again.
+                        (y:ys) | isDirUp y -> x:y:ys
+                        -- Directory is found, so move up one directory.
+                        (_:ys) -> ys
+                        -- At the base directory, so just use "..".
+                        [] -> [x]
+                normalizeIndirectionsRev (x:xs)
+                    | isDot x    = normalizeIndirectionsRev xs
+                    | otherwise  = x : normalizeIndirectionsRev xs
 
 -- | Like Shake's '%>' but gives higher priority to longer patterns. Useful
 -- in situations when a family of build rules, e.g. @"//*.a"@ and @"//*_p.a"@
