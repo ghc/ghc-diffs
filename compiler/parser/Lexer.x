@@ -2004,7 +2004,9 @@ data PState = PState {
 
         -- | Haddock-related tokens keyed by the right/left ends of the
         -- token that follow/precede them. See Note [Haddock tokens].
-        comments_follow, comments_precede :: DocStore (Located Token)
+        comments_follow, comments_precede :: DocStore (Located Token),
+
+        peeked_token :: Maybe ([Located Token], RealLocated Token, PState {- Invariant: this PState won't have a peeked_token -})
      }
         -- last_loc and last_len are used when generating error messages,
         -- and in pushCurrentContext only.  Sigh, if only Happy passed the
@@ -2526,7 +2528,8 @@ mkPStatePure options buf loc =
       comment_q = [],
       annotations_comments = [],
       comments_follow = emptyDocStore,
-      comments_precede = emptyDocStore
+      comments_precede = emptyDocStore,
+      peeked_token = Nothing
     }
 
 addWarning :: WarningFlag -> SrcSpan -> SDoc -> P ()
@@ -2593,7 +2596,7 @@ popContext = P $ \ s@(PState{ buffer = buf, options = o, context = ctx,
                               last_len = len, last_loc = last_loc }) ->
   case ctx of
         (_:tl) ->
-          POk s{ context = tl } ()
+          POk s{ context = tl, peeked_token = Nothing } ()
         []     ->
           PFailed (getMessages s) (RealSrcSpan last_loc) (srcParseErr o buf len)
 
@@ -2638,6 +2641,25 @@ Haddocks' are expected.
 TODO: talk about lookahead
 
 -}
+
+stashPState :: [Located Token]  -- ^ comment nexts'
+            -> RealLocated Token    -- ^ next token
+            -> PState           -- ^ replace it with this
+            -> P ()
+stashPState lNexts lTok s1 =
+  P $ \s2 -> POk s1{ peeked_token = Just (lNexts, lTok, s2) } ()
+
+popPState :: P (Maybe ([Located Token], RealLocated Token, PState))
+popPState =
+  P $ \s@PState{ peeked_token = x
+               , comments_follow = f
+               , comments_precede = p } -> POk s{ peeked_token = Nothing }
+                                               (fmap (\(l, r, s2) -> ( l
+                                                                     , r
+                                                                     , s2{ comments_follow = f
+                                                                         , comments_precede = p }
+                                                                     ))
+                                                     x)
 
 -- | Adjust the comment-like tokens that preceded the provided 'SrcSpan'.
 adjustCommentsNext :: ([Located Token] -> (a, [Located Token]))
@@ -2785,25 +2807,34 @@ lexComments :: Bool                  -- ^ queue comments
             -> P (RealLocated Token) -- ^ The next non-Haddock-like token
 lexComments queueComments lexTokenFun = do
 
-  -- Find '-- |', '-- $', and '-- *' doc comments
-  prev <- fmap isNothing getLastTk -- If there are no previous tokens,
-                                  -- collect '-- ^' as one of the "next"s
-  (docNexts, tok @ (L realSpan _)) <- getNext prev []
+  stashed <- popPState
 
+  -- Find '-- |', '-- $', and '-- *' doc comments
+  ((docNexts, tok @ (L realSpan _)), currState) <-
+    case stashed of
+
+      -- TODO ALEC: we are double counting sometimes in the presence of popContext
+      Nothing -> (,) <$> getNext True [] -- If there are no previous tokens,
+                                         -- collect '-- ^' as one of the "next"s
+                     <*> getPState
+      Just (docNexts, tok, s) -> setPState s *> pure ((docNexts, tok), s)
+  
   -- Peek '-- ^' doc comments
-  stashedState <- getPState
-  docPrevs <- getPrev []
-  setPState stashedState
+  (docPrevs, docNexts', tokNext') <- getPrev [] []
+  stashPState docNexts' tokNext' currState
 
   -- pprTrace "tok: " (ppr tok) (pure ())
-  -- pprTrace "  next: " (ppr (reverse docNexts)) (pure ())
-  -- pprTrace "  prev: " (ppr (reverse docPrevs)) (pure ())
-  addCommentsNext (RealSrcLoc (realSrcSpanStart realSpan)) (reverse docNexts)
-  addCommentsPrev (RealSrcLoc (realSrcSpanEnd realSpan)) (reverse docPrevs)
+  -- pprTrace "  next: " (ppr docNexts) (pure ())
+  -- pprTrace "  prev: " (ppr docPrevs) (pure ())
+  addCommentsNext (RealSrcLoc (realSrcSpanStart realSpan)) docNexts
+  addCommentsPrev (RealSrcLoc (realSrcSpanEnd realSpan)) docPrevs
 
   pure tok
 
   where
+
+-- TODO ALEC: pass 'queueComments' in as an argument (or make queueComment do the check?)
+
   -- | Get all doc comments that should be attached to the next token
   getNext :: Bool            -- ^ get comments attached to previous token too
           -> [Located Token] -- ^ accumulated tokens (reversed)
@@ -2824,21 +2855,31 @@ lexComments queueComments lexTokenFun = do
         | prev             -> getNext prev (lTok : acc)
         | otherwise        -> getNext prev acc
       _ | queueComments
-        , isComment tok    -> queueComment lTok *> getNext prev acc
+        , isComment tok    -> getNext prev acc
         | otherwise        -> pure (reverse acc, rlTok)
 
   -- | Get all doc comments that should be attached to the previous token
-  getPrev :: [Located Token] -- ^ accumulated tokens (reversed)
-          -> P [Located Token]
-  getPrev acc = do
+  getPrev :: [Located Token] -- ^ accumulated tokens (reversed) for doc prevs
+          -> [Located Token] -- ^ accumulated tokens (reversed) for doc nexts
+          -> P ( [Located Token]  --   accumulated doc prevs
+               , [Located Token]  --   accumulated doc nexts
+               , RealLocated Token )  --   next tok
+  getPrev acc1 acc2 = do
     rlTok@(L realSpan tok) <- lexTokenFun
     let lTok = L (RealSrcSpan realSpan) tok
+    
+    if (queueComments && isDocComment tok)
+      then queueComment lTok
+      else return ()
+    
     case tok of
-      ITdocCommentNext{}   -> getPrev acc
-      ITdocCommentNamed{}  -> getPrev acc
-      ITdocSection{}       -> getPrev acc
-      ITdocCommentPrev{}   -> getPrev (lTok : acc)
-      _                    -> pure (reverse acc)
+      ITdocCommentNext{}   -> getPrev acc1 (lTok : acc2)
+      ITdocCommentNamed{}  -> getPrev acc1 (lTok : acc2)
+      ITdocSection{}       -> getPrev acc1 (lTok : acc2)
+      ITdocCommentPrev{}   -> getPrev (lTok : acc1) acc2
+      _ | queueComments
+        , isComment tok    -> getPrev acc1 acc2
+        | otherwise        -> pure (reverse acc1, reverse acc2, rlTok)
 
 
 
