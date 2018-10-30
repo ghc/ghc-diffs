@@ -31,7 +31,7 @@ tcTypedBracket :: HsExpr GhcRn
 
 runAnnotation     :: CoreAnnTarget -> LHsExpr GhcRn -> TcM Annotation
 
-tcTopSpliceExpr :: SpliceType -> TcM (LHsExpr GhcTcId) -> TcM (LHsExpr GhcTcId)
+tcTopSpliceExpr :: Bool -> SpliceType -> TcM (LHsExpr GhcTcId) -> TcM (LHsExpr GhcTcId)
 
 runMetaE :: LHsExpr GhcTcId -> TcM (LHsExpr GhcPs)
 runMetaP :: LHsExpr GhcTcId -> TcM (LPat GhcPs)

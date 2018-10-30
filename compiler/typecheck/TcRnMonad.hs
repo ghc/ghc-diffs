@@ -107,6 +107,7 @@ module TcRnMonad(
   recordThUse, recordThSpliceUse, recordTopLevelSpliceLoc,
   getTopLevelSpliceLocs, keepAlive, getStage, getStageAndBindLevel, setStage,
   addModFinalizersWithLclEnv,
+  delayModFinalizersWithLclEnv,
 
   -- * Safe Haskell context
   recordUnsafeInfer, finalSafeMode, fixSafeInstances,
@@ -1714,10 +1715,16 @@ setStage s = updLclEnv (\ env -> env { tcl_th_ctxt = s })
 -- the current local environment.
 addModFinalizersWithLclEnv :: ThModFinalizers -> TcM ()
 addModFinalizersWithLclEnv mod_finalizers
+  = do fn <- delayModFinalizersWithLclEnv
+       liftIO $ fn mod_finalizers
+
+delayModFinalizersWithLclEnv :: TcM (ThModFinalizers -> IO ())
+delayModFinalizersWithLclEnv
   = do lcl_env <- getLclEnv
        th_modfinalizers_var <- fmap tcg_th_modfinalizers getGblEnv
-       updTcRef th_modfinalizers_var $ \fins ->
-         (lcl_env, mod_finalizers) : fins
+       return $ \mod_finalizers ->
+         modifyIORef th_modfinalizers_var $ \fins ->
+          (lcl_env, mod_finalizers) : fins
 
 {-
 ************************************************************************
