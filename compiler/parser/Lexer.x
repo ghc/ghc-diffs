@@ -2681,7 +2681,7 @@ removeLastCommentNext = fmap join . adjustCommentsNext go
 -- | Remove all last comment-like tokens that preceded the provided 'SrcSpan'.
 removeAllCommentsNext :: SrcSpan -> P [Located Token]
 removeAllCommentsNext = fmap (fromMaybe []) .
-                        adjustCommentsNext (\tks -> (reverse tks, []))
+                        adjustCommentsNext (\tks -> (tks, []))
 
 -- | Add comment-like tokens that preceded the provided 'SrcSpan'.
 addCommentsNext :: SrcLoc -> [Located Token] -> P ()
