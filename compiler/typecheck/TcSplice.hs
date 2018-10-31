@@ -491,7 +491,8 @@ tcTopSplice sd n expr res_ty
        ; q_expr <- tcTopSpliceExpr False Typed $
                           tcMonoExpr expr (mkCheckExpType meta_exp_ty)
        ; fn <- ApplyThModFinalizers <$> delayModFinalizersWithLclEnv
-       ; return (HsSpliceE noExt (HsSplicedT sd n fn expr res_ty q_expr))
+       ; lcl_env <- HsSplicedTcLclEnv <$> getLclEnv
+       ; return (HsSpliceE noExt (HsSplicedT sd n fn lcl_env expr res_ty q_expr))
 
        }
 
