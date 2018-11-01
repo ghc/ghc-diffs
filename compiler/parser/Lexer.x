@@ -2603,7 +2603,9 @@ popContext = P $ \ s@(PState{ buffer = buf, options = o, context = ctx,
 -- Push a new layout context at the indentation of the last token read.
 pushCurrentContext :: GenSemic -> P ()
 pushCurrentContext gen_semic = P $ \ s@PState{ last_loc=loc, context=ctx } ->
-    POk s{context = Layout (srcSpanStartCol loc) gen_semic : ctx} ()
+    POk s{ context = Layout (srcSpanStartCol loc) gen_semic : ctx
+         , peeked_token = Nothing }
+        ()
 
 -- This is only used at the outer level of a module when the 'module' keyword is
 -- missing.
@@ -2818,7 +2820,7 @@ lexComments queueComments lexTokenFun = do
                                          -- collect '-- ^' as one of the "next"s
                      <*> getPState
       Just (docNexts, tok, s) -> setPState s *> pure ((docNexts, tok), s)
-  
+
   -- Peek '-- ^' doc comments
   (docPrevs, docNexts', tokNext') <- getPrev [] []
   stashPState docNexts' tokNext' currState
@@ -2867,11 +2869,11 @@ lexComments queueComments lexTokenFun = do
   getPrev acc1 acc2 = do
     rlTok@(L realSpan tok) <- lexTokenFun
     let lTok = L (RealSrcSpan realSpan) tok
-    
+
     if (queueComments && isDocComment tok)
       then queueComment lTok
       else return ()
-    
+
     case tok of
       ITdocCommentNext{}   -> getPrev acc1 (lTok : acc2)
       ITdocCommentNamed{}  -> getPrev acc1 (lTok : acc2)
