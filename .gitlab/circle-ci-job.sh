@@ -56,15 +56,16 @@ echo Circle CI build number: $build_num
 echo Circle CI build page: https://circleci.com/gh/${GITHUB_ORG}/${GITHUB_PROJECT}/$build_num
 
 outcome="null"
+STATUS_URL="https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}?circle-token=${CIRCLECI_TOKEN}"
+
 while [ "$outcome" == "null" ]; do
     sleep 30s
-    STATUS_URL="https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}?circle-token=${CIRCLECI_TOKEN}"
     STATUS_RESP=$(curl -s $STATUS_URL)
-    outcome="querying"
     if [ $? -eq 0 ]; then
 	new_outcome=$(echo $STATUS_RESP | jq '.outcome')
+	jq_exitcode=$?
 	echo "New outcome: $new_outcome"
-	if [ "$new_outcome" == "null" ] && [ $? -ne 0 ]; then
+	if [ "$new_outcome" == "null" ] && [ $jq_exitcode -ne 0 ]; then
 	    echo "Couldn't read 'outcome' field in JSON:"
 	    echo $STATUS_RESP
 	    echo "Skipping"
@@ -79,7 +80,7 @@ while [ "$outcome" == "null" ]; do
     fi
 done
 
-if [ "$outcome" == "success" ]; then
+if [ "$outcome" == "\"success\"" ]; then
     echo The build passed && exit 0
 else
     echo The build failed && exit 1
