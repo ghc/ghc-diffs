@@ -1,0 +1,43 @@
+image: ghcci/x86_64-linux:0.0.4
+
+before_script:
+   - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client jq -y )'
+   - eval $(ssh-agent -s)
+
+   ## Add the SSH key stored in SSH_PRIVATE_KEY variable to the agent store
+   ## We're using tr to fix line endings which makes ed25519 keys work
+   ## without extra base64 encoding.
+   ## https://gitlab.com/gitlab-examples/ssh-private-key/issues/1#note_48526556
+   ##
+   - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+   - mkdir -p ~/.ssh
+   - chmod 700 ~/.ssh
+   #- git config --global user.email "user@example.com"
+   #- git config --global user.name "User name"
+
+validate-x86_64-linux:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-linux"
+
+validate-i386-linux:
+  script: ".gitlab/circle-ci-job.sh validate-i386-linux"
+
+validate-x86_64-freebsd:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-freebsd"
+
+validate-x86_64-darwin:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-darwin"
+
+validate-hadrian-x86_64-linux:
+  script: ".gitlab/circle-ci-job.sh validate-hadrian-x86_64-linux"
+
+validate-x86_64-linux-unreg:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-unreg"
+
+validate-x86_64-linux-llvm:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-llvm"
+
+validate-x86_64-linux-debug:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-debug"
+
+slow-validate-x86_64-linux:
+  script: ".gitlab/circle-ci-job.sh slow-validate-x86_64-linux"
