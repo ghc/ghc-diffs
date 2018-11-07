@@ -64,7 +64,7 @@ while [ "$outcome" == "null" ]; do
     if [ $? -eq 0 ]; then
 	new_outcome=$(echo $STATUS_RESP | jq '.outcome')
 	echo "New outcome: $new_outcome"
-	if [ "$new_outcome" == "null" && $? -neq 0 ]; then
+	if [ "$new_outcome" == "null" ] && [ $? -neq 0 ]; then
 	    echo "Couldn't read 'outcome' field in JSON:"
 	    echo $STATUS_RESP
 	    echo "Skipping"
