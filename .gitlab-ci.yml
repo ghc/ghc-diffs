@@ -21,23 +21,23 @@ before_script:
 validate-x86_64-linux:
   script: ".gitlab/circle-ci-job.sh validate-x86_64-linux"
 
-# validate-i386-linux:
-#   script: ".gitlab/circle-ci-job.sh validate-i386-linux"
+validate-i386-linux:
+  script: ".gitlab/circle-ci-job.sh validate-i386-linux"
 
 # validate-x86_64-freebsd:
 #   script: ".gitlab/circle-ci-job.sh validate-x86_64-freebsd"
 
-# validate-x86_64-darwin:
-#   script: ".gitlab/circle-ci-job.sh validate-x86_64-darwin"
+validate-x86_64-darwin:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-darwin"
 
-# validate-hadrian-x86_64-linux:
-#   script: ".gitlab/circle-ci-job.sh validate-hadrian-x86_64-linux"
+validate-hadrian-x86_64-linux:
+  script: ".gitlab/circle-ci-job.sh validate-hadrian-x86_64-linux"
 
 # validate-x86_64-linux-unreg:
 #   script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-unreg"
 
-# validate-x86_64-linux-llvm:
-#   script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-llvm"
+validate-x86_64-linux-llvm:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-llvm"
 
 # validate-x86_64-linux-debug:
 #   script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-debug"

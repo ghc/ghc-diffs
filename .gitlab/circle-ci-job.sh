@@ -52,8 +52,13 @@ outcome="null"
 while [ "$outcome" == "null" ]; do
     sleep 30s
     STATUS_URL="https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}?circle-token=${CIRCLECI_TOKEN}"
-    STATUS_RESP=$(curl $STATUS_URL)
-    outcome=$(echo $STATUS_RESP | jq '.outcome')
+    STATUS_RESP=$(curl -s $STATUS_URL)
+    if [ $? -eq 0]; then
+       outcome=$(echo $STATUS_RESP | jq '.outcome')
+    else
+	echo "curl failed:"
+	echo $STATUS_RESP
+    fi
 done
 
 if [ "$outcome" == "success" ]; then
