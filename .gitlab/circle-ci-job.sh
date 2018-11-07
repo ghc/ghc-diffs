@@ -64,13 +64,11 @@ while [ "$outcome" == "null" ]; do
     if [ $? -eq 0 ]; then
 	new_outcome=$(echo $STATUS_RESP | jq '.outcome')
 	jq_exitcode=$?
-	echo "New outcome: $new_outcome"
 	if [ "$new_outcome" == "null" ] && [ $jq_exitcode -ne 0 ]; then
 	    echo "Couldn't read 'outcome' field in JSON:"
 	    echo $STATUS_RESP
 	    echo "Skipping"
 	else
-	    echo "Successfully parsed outcome field"
 	    outcome="$new_outcome"
 	fi
     else
