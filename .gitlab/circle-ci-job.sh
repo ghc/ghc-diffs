@@ -41,9 +41,16 @@ git checkout -b ${GITHUB_BRANCH} || true # if we've already done this before
 git push gh ${GITHUB_BRANCH} || true # if we've already done this before
 
 BODY="{ \"revision\": \"${CI_COMMIT_SHA}\", \"build_parameters\": { \"CIRCLE_JOB\": \"${CIRCLE_JOB}\" } }"
-RESP=$(curl -X POST -H "Content-Type: application/json" -d "$BODY" \
+RESP=$(curl -s -X POST -H "Content-Type: application/json" -d "$BODY" \
 	    https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/tree/${GITHUB_BRANCH}?circle-token=${CIRCLECI_TOKEN})
-build_num=$(echo $RESP | jq '.build_num')
+
+if [ $? -eq 0 ]; then
+  build_num=$(echo $RESP | jq '.build_num')
+else
+    echo "Couldn't submit job"
+    echo $RESP
+    exit 1
+fi
 
 echo Circle CI build number: $build_num
 echo Circle CI build page: https://circleci.com/gh/${GITHUB_ORG}/${GITHUB_PROJECT}/$build_num
@@ -53,11 +60,22 @@ while [ "$outcome" == "null" ]; do
     sleep 30s
     STATUS_URL="https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}?circle-token=${CIRCLECI_TOKEN}"
     STATUS_RESP=$(curl -s $STATUS_URL)
-    if [ $? -eq 0]; then
-       outcome=$(echo $STATUS_RESP | jq '.outcome')
+    outcome="querying"
+    if [ $? -eq 0 ]; then
+	new_outcome=$(echo $STATUS_RESP | jq '.outcome')
+	echo "New outcome: $new_outcome"
+	if [ "$new_outcome" == "null" && $? -neq 0 ]; then
+	    echo "Couldn't read 'outcome' field in JSON:"
+	    echo $STATUS_RESP
+	    echo "Skipping"
+	else
+	    echo "Successfully parsed outcome field"
+	    outcome="$new_outcome"
+	fi
     else
 	echo "curl failed:"
 	echo $STATUS_RESP
+	echo "Skipping"
     fi
 done
 
