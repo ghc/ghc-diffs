@@ -85,7 +85,7 @@ if [ "$outcome" == "\"success\"" ]; then
     artifactsBody=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}/artifacts?circle-token=${CIRCLECI_TOKEN})
     echo "artifacts: $artifactsBody"
 
-    echo $artifactsBody | jq '[] | .url' | xargs wget
+    echo $artifactsBody | jq '.[] | .url' | xargs wget
     exit 0
 else
     echo The build failed
