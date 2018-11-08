@@ -66,13 +66,13 @@ aliases:
         mkdir -p test-results
         make test THREADS=`mk/detect-cpu-count.sh` SKIP_PERF_TESTS=YES JUNIT_FILE=../../test-results/junit.xml
   - &store_test_results
-    - store_test_results:
-        path: test-results
+    store_test_results:
+      path: test-results
   - &store_test_artifacts
-    - store_artifacts:
-        # we might want to add the whole output of the test phase
-        # too at some point
-        path: test-results/junit.xml
+    store_artifacts:
+      # we might want to add the whole output of the test phase
+      # too at some point
+      path: test-results/junit.xml
   - &slowtest
     run:
       name: Full Test
