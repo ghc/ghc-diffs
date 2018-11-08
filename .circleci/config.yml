@@ -85,12 +85,8 @@ aliases:
       # that.
       no_output_timeout: "30m"
   - &storeartifacts
-    run:
-      name: Store artifacts
-      command: |
-        curl https://ghc-artifacts.s3.amazonaws.com/tools/ghc-artifact-collector-$GHC_COLLECTOR_FLAVOR --output ghc-artifact-collector
-        chmod +x ghc-artifact-collector
-        ./ghc-artifact-collector ghc*.tar.xz
+    store_artifacts:
+      path: ghc*.tar.xz
   - &trigger_on_tags
     filters:
       tags:
