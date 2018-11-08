@@ -68,7 +68,10 @@ aliases:
   - &store_test_results
     - store_test_results:
         path: test-results
+  - &store_test_artifacts
     - store_artifacts:
+        # we might want to add the whole output of the test phase
+        # too at some point
         path: test-results/junit.xml
   - &slowtest
     run:
@@ -84,7 +87,7 @@ aliases:
       # Building bindist takes ~15 minutes without output, account for
       # that.
       no_output_timeout: "30m"
-  - &storeartifacts
+  - &store_bindist
     store_artifacts:
       path: ghc*.tar.xz
   - &trigger_on_tags
@@ -108,9 +111,10 @@ jobs:
       - *configure_unix
       - *make
       - *bindist
-      - *storeartifacts
+      - *store_bindist
       - *test
       - *store_test_results
+      - *store_test_artifacts
 
   "validate-x86_64-freebsd":
     resource_class: xlarge
@@ -128,9 +132,10 @@ jobs:
       - *configure_bsd
       - *make
       - *bindist
-      - *storeartifacts
+      - *store_bindist
       - *test
       - *store_test_results
+      - *store_test_artifacts
 
   "validate-x86_64-darwin":
     macos:
@@ -153,9 +158,10 @@ jobs:
       - *configure_unix
       - *make
       - *bindist
-      - *storeartifacts
+      - *store_bindist
       - *test
       - *store_test_results
+      - *store_test_artifacts
 
   "validate-hadrian-x86_64-linux":
     resource_class: xlarge
@@ -186,6 +192,7 @@ jobs:
       - *make
       - *test
       - *store_test_results
+      - *store_test_artifacts
 
   "validate-x86_64-linux-llvm":
     resource_class: xlarge
@@ -211,6 +218,7 @@ jobs:
       - *make
       - *test
       - *store_test_results
+      - *store_test_artifacts
 
   # Nightly build with -DDEBUG using devel2 flavour
   "validate-x86_64-linux-debug":
@@ -229,6 +237,7 @@ jobs:
       - *make
       - *test
       - *store_test_results
+      - *store_test_artifacts
 
   "validate-i386-linux":
     resource_class: xlarge
@@ -245,9 +254,10 @@ jobs:
       - *configure_unix_32
       - *make
       - *bindist
-      - *storeartifacts
+      - *store_bindist
       - *test
       - *store_test_results
+      - *store_test_artifacts
 
   "validate-x86_64-fedora":
     resource_class: xlarge
@@ -264,9 +274,10 @@ jobs:
       - *configure_unix
       - *make
       - *bindist
-      - *storeartifacts
+      - *store_bindist
       - *test
       - *store_test_results
+      - *store_test_artifacts
 
   "slow-validate-x86_64-linux":
     resource_class: xlarge
@@ -284,6 +295,7 @@ jobs:
       - *make
       - *slowtest
       - *store_test_results
+      - *store_test_artifacts
 
 workflows:
   version: 2
