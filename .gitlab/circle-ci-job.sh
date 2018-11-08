@@ -81,7 +81,7 @@ done
 
 if [ "$outcome" == "\"success\"" ]; then
     echo The build passed
-    $artifacts=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${buildnum}/artifacts?circle-token=${CIRCLECI_TOKEN} | jq '.[]')
+    artifacts=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${buildnum}/artifacts?circle-token=${CIRCLECI_TOKEN} | jq '.[]')
     while IFS= read -r artifact; do
 	echo $artifact
 	filename=$(echo $artifact | jq '.path' | ghc -e 'getContents >>= putStrLn . read')
