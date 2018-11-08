@@ -21,6 +21,14 @@ before_script:
 
 validate-x86_64-linux:
   script: ".gitlab/circle-ci-job.sh validate-x86_64-linux"
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    paths:
+      - ghc.tar.xz
+      - junit.xml
+
 # validate-i386-linux:
 #   script: ".gitlab/circle-ci-job.sh validate-i386-linux"
 # validate-x86_64-freebsd:
@@ -33,6 +41,14 @@ validate-x86_64-linux:
 #   script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-unreg"
 validate-x86_64-linux-llvm:
   script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-llvm"
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    paths:
+      - ghc.tar.xz
+      - junit.xml
+
 # validate-x86_64-linux-debug:
 #   script: ".gitlab/circle-ci-job.sh validate-x86_64-linux-debug"
 # slow-validate-x86_64-linux:

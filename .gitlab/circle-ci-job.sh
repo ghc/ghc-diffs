@@ -81,12 +81,18 @@ done
 
 if [ "$outcome" == "\"success\"" ]; then
     echo The build passed
-    artifactsBody=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${buildnum}/artifacts?circle-token=${CIRCLECI_TOKEN})
+
+    artifactsBody=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}/artifacts?circle-token=${CIRCLECI_TOKEN})
     echo "artifacts: $artifactsBody"
+
     echo $artifactsBody | jq '[] | .url' | xargs wget
     exit 0
 else
     echo The build failed
+
+    artifactsBody=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}/artifacts?circle-token=${CIRCLECI_TOKEN})
+    echo "artifacts: $artifactsBody"
+
     failing_step=$(echo $STATUS_RESP | jq '.steps | .[] | .actions | .[] | select(.status != "success")')
     failing_step_name=$(echo $failing_step | jq '.name' | ghc -e 'getContents >>= putStrLn . read')
     echo "Step JSON: $failing_step"
