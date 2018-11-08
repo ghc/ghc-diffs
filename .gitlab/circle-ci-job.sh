@@ -57,6 +57,7 @@ echo Circle CI build page: https://circleci.com/gh/${GITHUB_ORG}/${GITHUB_PROJEC
 
 outcome="null"
 STATUS_URL="https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}?circle-token=${CIRCLECI_TOKEN}"
+STATUS_RESP=""
 
 while [ "$outcome" == "null" ]; do
     sleep 30s
@@ -81,5 +82,16 @@ done
 if [ "$outcome" == "\"success\"" ]; then
     echo The build passed && exit 0
 else
-    echo The build failed && exit 1
+    echo The build failed
+    failing_step=$(echo $STATUS_RESP | jq '.steps | .[] | .actions | .[] | select(.status != "success")')
+    failing_step_name=$(echo $failing_step | jq '.name' | ghc -e 'getContents >>= putStrLn')
+    failing_cmds=$(echo $failing_step | jq '.bash_command' | ghc -e 'getContents >>= putStrLn')
+    log_url=$(echo $failing_step | jq '.output_url' | ghc -e 'getContents >>= putStrLn')
+    last_log_lines=$(curl $log_url | gunzip | jq '.[] | select(.type == "out") | .message' | ghc -e 'getContents >>= mapM_ putStrLn . reverse . take 50 . reverse . map init . lines . read')
+    echo "Failing step: $failing_step_name"
+    echo "Failing commands:"
+    echo $failing_cmds
+    echo End of the build log:
+    echo $last_log_lines
+    exit 1
 fi
