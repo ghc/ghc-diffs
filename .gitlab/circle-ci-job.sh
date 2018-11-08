@@ -81,14 +81,9 @@ done
 
 if [ "$outcome" == "\"success\"" ]; then
     echo The build passed
-    artifacts=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${buildnum}/artifacts?circle-token=${CIRCLECI_TOKEN} | jq '.[]')
-    while IFS= read -r artifact; do
-	echo $artifact
-	filename=$(echo $artifact | jq '.path' | ghc -e 'getContents >>= putStrLn . read')
-	url=$(echo $artifact | jq '.url' | ghc -e 'getContents >>= putStrLn . read')
-	echo "Saving $url to $filename"
-	curl $url -o $filename
-    done < <(echo $artifacts)
+    artifactsBody=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${buildnum}/artifacts?circle-token=${CIRCLECI_TOKEN})
+    echo "artifacts: $artifactsBody"
+    echo $artifactsBody | jq '[] | .url' | xargs wget
     exit 0
 else
     echo The build failed
