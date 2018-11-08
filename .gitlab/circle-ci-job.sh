@@ -80,7 +80,7 @@ while [ "$outcome" == "null" ]; do
 done
 
 if [ "$outcome" == "\"success\"" ]; then
-    echo The build passed && exit 0
+    echo The build passed
 else
     echo The build failed
     failing_step=$(echo $STATUS_RESP | jq '.steps | .[] | .actions | .[] | select(.status != "success")')
@@ -95,3 +95,7 @@ else
     echo $last_log_lines
     exit 1
 fi
+
+# TODO: get test results and artifacts
+
+exit 0

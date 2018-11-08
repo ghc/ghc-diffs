@@ -68,6 +68,8 @@ aliases:
   - &store_test_results
     store_test_results:
       path: test-results
+    store_artifacts:
+      path: test-results/junit.xml
   - &slowtest
     run:
       name: Full Test
@@ -212,6 +214,7 @@ jobs:
       - *configure_unix
       - *make
       - *test
+      - *store_test_results
 
   # Nightly build with -DDEBUG using devel2 flavour
   "validate-x86_64-linux-debug":
