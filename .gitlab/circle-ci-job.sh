@@ -105,7 +105,7 @@ else
     log_url=$(echo $failing_step | jq '.output_url' | ghc -e 'getContents >>= putStrLn . read')
     echo "Log url: $log_url"
 
-    last_log_lines=$(curl $log_url | gunzip | jq '.[] | select(.type == "out") | .message' | ghc -e 'getContents >>= mapM_ putStrLn . reverse . take 50 . reverse . map init . lines . read')
+    last_log_lines=$(curl $log_url | gunzip | jq '.[] | select(.type == "out") | .message' | ghc -e 'getContents >>= putStrLn . read' | tail -50)
     echo End of the build log:
     echo $last_log_lines
 
