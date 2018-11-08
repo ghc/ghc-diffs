@@ -83,13 +83,13 @@ aliases:
     run:
       name: Create bindist
       # Reduce compression effort to 3
-      command: make binary-dist TAR_COMP_OPTS="-2"
+      command: make binary-dist TAR_COMP_OPTS="-2" && mv ghc*.tar.xz ghc.tar.xz
       # Building bindist takes ~15 minutes without output, account for
       # that.
       no_output_timeout: "30m"
   - &store_bindist
     store_artifacts:
-      path: ghc*.tar.xz
+      path: ghc.tar.xz
   - &trigger_on_tags
     filters:
       tags:

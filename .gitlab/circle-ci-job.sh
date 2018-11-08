@@ -81,21 +81,32 @@ done
 
 if [ "$outcome" == "\"success\"" ]; then
     echo The build passed
+    $artifacts=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${buildnum}/artifacts?circle-token=${CIRCLECI_TOKEN} | jq '.[]')
+    while IFS= read -r artifact; do
+	echo $artifact
+	filename=$(echo $artifact | jq '.path' | ghc -e 'getContents >>= putStrLn . read')
+	url=$(echo $artifact | jq '.url' | ghc -e 'getContents >>= putStrLn . read')
+	echo "Saving $url to $filename"
+	curl $url -o $filename
+    done < <(echo $artifacts)
+    exit 0
 else
     echo The build failed
     failing_step=$(echo $STATUS_RESP | jq '.steps | .[] | .actions | .[] | select(.status != "success")')
-    failing_step_name=$(echo $failing_step | jq '.name' | ghc -e 'getContents >>= putStrLn')
-    failing_cmds=$(echo $failing_step | jq '.bash_command' | ghc -e 'getContents >>= putStrLn')
-    log_url=$(echo $failing_step | jq '.output_url' | ghc -e 'getContents >>= putStrLn')
-    last_log_lines=$(curl $log_url | gunzip | jq '.[] | select(.type == "out") | .message' | ghc -e 'getContents >>= mapM_ putStrLn . reverse . take 50 . reverse . map init . lines . read')
+    failing_step_name=$(echo $failing_step | jq '.name' | ghc -e 'getContents >>= putStrLn . read')
+    echo "Step JSON: $failing_step"
     echo "Failing step: $failing_step_name"
+
+    failing_cmds=$(echo $failing_step | jq '.bash_command' | ghc -e 'getContents >>= putStrLn . read')
     echo "Failing commands:"
     echo $failing_cmds
+
+    log_url=$(echo $failing_step | jq '.output_url' | ghc -e 'getContents >>= putStrLn . read')
+    echo "Log url: $log_url"
+
+    last_log_lines=$(curl $log_url | gunzip | jq '.[] | select(.type == "out") | .message' | ghc -e 'getContents >>= mapM_ putStrLn . reverse . take 50 . reverse . map init . lines . read')
     echo End of the build log:
     echo $last_log_lines
+
     exit 1
 fi
-
-# TODO: get test results and artifacts
-
-exit 0
