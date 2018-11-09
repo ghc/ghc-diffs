@@ -82,7 +82,7 @@ done
 if [ "$outcome" == "\"success\"" ]; then
     echo The build passed
 
-    artifactsBody=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}/artifacts?circle-token=${CIRCLECI_TOKEN})
+    artifactsBody=$(curl -s https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}/artifacts?circle-token=${CIRCLECI_TOKEN})
     echo "artifacts: $artifactsBody"
 
     echo $artifactsBody | jq '.[] | .url' | xargs wget
@@ -90,7 +90,7 @@ if [ "$outcome" == "\"success\"" ]; then
 else
     echo The build failed
 
-    artifactsBody=$(curl https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}/artifacts?circle-token=${CIRCLECI_TOKEN})
+    artifactsBody=$(curl -s https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}/artifacts?circle-token=${CIRCLECI_TOKEN})
     echo "artifacts: $artifactsBody"
 
     failing_step=$(echo $STATUS_RESP | jq '.steps | .[] | .actions | .[] | select(.status != "success")')
@@ -105,7 +105,7 @@ else
     log_url=$(echo $failing_step | jq '.output_url' | ghc -e 'getContents >>= putStrLn . read')
     echo "Log url: $log_url"
 
-    last_log_lines=$(curl $log_url | gunzip | jq '.[] | select(.type == "out") | .message' | ghc -e 'getContents >>= putStrLn . read' | tail -50)
+    last_log_lines=$(curl -s $log_url | gunzip | jq '.[] | select(.type == "out") | .message' | ghc -e 'getContents >>= putStrLn . read' | tail -50)
     echo End of the build log:
     echo $last_log_lines
 
