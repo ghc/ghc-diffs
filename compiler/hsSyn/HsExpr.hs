@@ -43,6 +43,7 @@ import Util
 import Outputable
 import FastString
 import Type
+import {-# SOURCE #-} TcRnTypes (TcLclEnv)
 
 -- libraries:
 import Data.Data hiding (Fixity(..))
@@ -2399,6 +2400,14 @@ data HsSplice id
         (XSpliced id)
         ThModFinalizers     -- TH finalizers produced by the splice.
         (HsSplicedThing id) -- The result of splicing
+   | HsSplicedT
+      SpliceDecoration
+      (IdP GhcRn)
+      ApplyThModFinalizers
+      HsSplicedTcLclEnv
+      (LHsExpr GhcRn)
+      Type
+      (LHsExpr GhcTc)
    | XSplice (XXSplice id)  -- Note [Trees that Grow] extension point
 
 type instance XTypedSplice   (GhcPass _) = NoExt
@@ -2432,11 +2441,28 @@ isTypedSplice _                  = False   -- Quasi-quotes are untyped splices
 --
 newtype ThModFinalizers = ThModFinalizers [ForeignRef (TH.Q ())]
 
+
 -- A Data instance which ignores the argument of 'ThModFinalizers'.
 instance Data ThModFinalizers where
   gunfold _ z _ = z $ ThModFinalizers []
   toConstr  a   = mkConstr (dataTypeOf a) "ThModFinalizers" [] Data.Prefix
   dataTypeOf a  = mkDataType "HsExpr.ThModFinalizers" [toConstr a]
+
+newtype ApplyThModFinalizers = ApplyThModFinalizers (ThModFinalizers -> IO ())
+
+-- A Data instance which ignores the argument of 'ThModFinalizers'.
+instance Data ApplyThModFinalizers where
+  gunfold _ z _ = z $ ApplyThModFinalizers (const (return ()))
+  toConstr  a   = mkConstr (dataTypeOf a) "ApplyThModFinalizers" [] Data.Prefix
+  dataTypeOf a  = mkDataType "HsExpr.ApplyThModFinalizers" [toConstr a]
+
+newtype HsSplicedTcLclEnv = HsSplicedTcLclEnv TcLclEnv
+
+-- A Data instance which ignores the argument of 'ThModFinalizers'.
+instance Data HsSplicedTcLclEnv where
+  gunfold _ _ _ = panic "HsSplicedTcLclEnv"
+  toConstr  a   = mkConstr (dataTypeOf a) "HsSplicedTcLclEnv" [] Data.Prefix
+  dataTypeOf a  = mkDataType "HsExpr.HsSplicedTcLclEnv" [toConstr a]
 
 -- | Haskell Spliced Thing
 --
@@ -2569,6 +2595,7 @@ pprSplice (HsUntypedSplice _ NoParens n e)
   = ppr_splice empty  n e empty
 pprSplice (HsQuasiQuote _ n q _ s)      = ppr_quasi n q s
 pprSplice (HsSpliced _ _ thing)         = ppr thing
+pprSplice (HsSplicedT _ _ _ _ _ _ thing)        = ppr thing
 pprSplice (XSplice x)                   = ppr x
 
 ppr_quasi :: OutputableBndr p => p -> p -> FastString -> SDoc
