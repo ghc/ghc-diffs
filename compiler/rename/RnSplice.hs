@@ -300,11 +300,12 @@ runRnSplice flavour run_meta ppr_res splice
                 HsQuasiQuote _ _ q qs str -> mkQuasiQuoteExpr flavour q qs str
                 HsTypedSplice {}          -> pprPanic "runRnSplice" (ppr splice)
                 HsSpliced {}              -> pprPanic "runRnSplice" (ppr splice)
+                HsSplicedT {}             -> pprPanic "runRnSplice" (ppr splice)
                 XSplice {}                -> pprPanic "runRnSplice" (ppr splice)
 
              -- Typecheck the expression
        ; meta_exp_ty   <- tcMetaTy meta_ty_name
-       ; zonked_q_expr <- tcTopSpliceExpr Untyped $
+       ; zonked_q_expr <- tcTopSpliceExpr True Untyped $
                           tcPolyExpr the_expr meta_exp_ty
 
              -- Run the expression
@@ -345,6 +346,8 @@ makePending flavour (HsQuasiQuote _ n quoter q_span quote)
 makePending _ splice@(HsTypedSplice {})
   = pprPanic "makePending" (ppr splice)
 makePending _ splice@(HsSpliced {})
+  = pprPanic "makePending" (ppr splice)
+makePending _ splice@(HsSplicedT {})
   = pprPanic "makePending" (ppr splice)
 makePending _ splice@(XSplice {})
   = pprPanic "makePending" (ppr splice)
@@ -400,6 +403,7 @@ rnSplice (HsQuasiQuote x splice_name quoter q_loc quote)
                                                              , unitFV quoter') }
 
 rnSplice splice@(HsSpliced {}) = pprPanic "rnSplice" (ppr splice)
+rnSplice splice@(HsSplicedT {}) = pprPanic "rnSplice" (ppr splice)
 rnSplice splice@(XSplice {})   = pprPanic "rnSplice" (ppr splice)
 
 ---------------------
@@ -709,6 +713,7 @@ spliceCtxt splice
              HsTypedSplice   {} -> text "typed splice:"
              HsQuasiQuote    {} -> text "quasi-quotation:"
              HsSpliced       {} -> text "spliced expression:"
+             HsSplicedT      {} -> text "spliced expression:"
              XSplice         {} -> text "spliced expression:"
 
 -- | The splice data to be logged

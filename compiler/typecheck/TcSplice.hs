@@ -58,11 +58,9 @@ import HscMain
         -- These imports are the reason that TcSplice
         -- is very high up the module hierarchy
 import FV
-import RnSplice( traceSplice, SpliceInfo(..) )
 import RdrName
 import HscTypes
 import Convert
-import RnExpr
 import RnEnv
 import RnUtils ( HsDocContext(..) )
 import RnFixity ( lookupFixityRn_help )
@@ -437,18 +435,18 @@ When a variable is used, we compare
 ************************************************************************
 -}
 
-tcSpliceExpr splice@(HsTypedSplice _ _ name expr) res_ty
+tcSpliceExpr splice@(HsTypedSplice _ sd name expr) res_ty
   = addErrCtxt (spliceCtxtDoc splice) $
     setSrcSpan (getLoc expr)    $ do
     { stage <- getStage
     ; case stage of
-          Splice {}            -> tcTopSplice expr res_ty
+          Splice {}            -> tcTopSplice sd name expr res_ty
           Brack pop_stage pend -> tcNestedSplice pop_stage pend name expr res_ty
           RunSplice _          ->
             -- See Note [RunSplice ThLevel] in "TcRnTypes".
             pprPanic ("tcSpliceExpr: attempted to typecheck a splice when " ++
                       "running another splice") (ppr splice)
-          Comp                 -> tcTopSplice expr res_ty
+          Comp                 -> tcTopSplice sd name expr res_ty
     }
 tcSpliceExpr splice _
   = pprPanic "tcSpliceExpr" (ppr splice)
@@ -485,34 +483,20 @@ tcNestedSplice pop_stage (TcPending ps_var lie_var) splice_name expr res_ty
 tcNestedSplice _ _ splice_name _ _
   = pprPanic "tcNestedSplice: rename stage found" (ppr splice_name)
 
-tcTopSplice :: LHsExpr GhcRn -> ExpRhoType -> TcM (HsExpr GhcTc)
-tcTopSplice expr res_ty
+tcTopSplice :: SpliceDecoration -> Name -> LHsExpr GhcRn -> ExpRhoType -> TcM (HsExpr GhcTc)
+tcTopSplice sd n expr res_ty
   = do { -- Typecheck the expression,
          -- making sure it has type Q (T res_ty)
          res_ty <- expTypeToType res_ty
        ; meta_exp_ty <- tcTExpTy res_ty
-       ; zonked_q_expr <- tcTopSpliceExpr Typed $
+       ; q_expr <- tcTopSpliceExpr False Typed $
                           tcMonoExpr expr (mkCheckExpType meta_exp_ty)
+       ; fn <- ApplyThModFinalizers <$> delayModFinalizersWithLclEnv
+       ; lcl_env <- HsSplicedTcLclEnv <$> getLclEnv
+       ; return (HsSpliceE noExt (HsSplicedT sd n fn lcl_env expr res_ty q_expr))
 
-         -- See Note [Collecting modFinalizers in typed splices].
-       ; modfinalizers_ref <- newTcRef []
-         -- Run the expression
-       ; expr2 <- setStage (RunSplice modfinalizers_ref) $
-                    runMetaE zonked_q_expr
-       ; mod_finalizers <- readTcRef modfinalizers_ref
-       ; addModFinalizersWithLclEnv $ ThModFinalizers mod_finalizers
-       ; traceSplice (SpliceInfo { spliceDescription = "expression"
-                                 , spliceIsDecl      = False
-                                 , spliceSource      = Just expr
-                                 , spliceGenerated   = ppr expr2 })
+       }
 
-         -- Rename and typecheck the spliced-in expression,
-         -- making sure it has type res_ty
-         -- These steps should never fail; this is a *typed* splice
-       ; addErrCtxt (spliceResultDoc expr) $ do
-       { (exp3, _fvs) <- rnLExpr expr2
-       ; exp4 <- tcMonoExpr exp3 (mkCheckExpType res_ty)
-       ; return (unLoc exp4) } }
 
 {-
 ************************************************************************
@@ -527,14 +511,8 @@ spliceCtxtDoc splice
   = hang (text "In the Template Haskell splice")
          2 (pprSplice splice)
 
-spliceResultDoc :: LHsExpr GhcRn -> SDoc
-spliceResultDoc expr
-  = sep [ text "In the result of the splice:"
-        , nest 2 (char '$' <> ppr expr)
-        , text "To see what the splice expanded to, use -ddump-splices"]
-
 -------------------
-tcTopSpliceExpr :: SpliceType -> TcM (LHsExpr GhcTc) -> TcM (LHsExpr GhcTc)
+tcTopSpliceExpr :: Bool -> SpliceType -> TcM (LHsExpr GhcTc) -> TcM (LHsExpr GhcTc)
 -- Note [How top-level splices are handled]
 -- Type check an expression that is the body of a top-level splice
 --   (the caller will compile and run it)
@@ -544,7 +522,7 @@ tcTopSpliceExpr :: SpliceType -> TcM (LHsExpr GhcTc) -> TcM (LHsExpr GhcTc)
 -- The recursive call to tcPolyExpr will simply expand the
 -- inner escape before dealing with the outer one
 
-tcTopSpliceExpr isTypedSplice tc_action
+tcTopSpliceExpr doZonk isTypedSplice tc_action
   = checkNoErrs $  -- checkNoErrs: must not try to run the thing
                    -- if the type checker fails!
     unsetGOptM Opt_DeferTypeErrors $
@@ -559,7 +537,8 @@ tcTopSpliceExpr isTypedSplice tc_action
        ; const_binds     <- simplifyTop wanted
 
           -- Zonk it and tie the knot of dictionary bindings
-       ; zonkTopLExpr (mkHsDictLet (EvBinds const_binds) expr') }
+       ; let z = if doZonk then zonkTopLExpr else return
+       ; z  (mkHsDictLet (EvBinds const_binds) expr') }
 
 {-
 ************************************************************************
@@ -578,7 +557,7 @@ runAnnotation target expr = do
     -- Check the instances we require live in another module (we want to execute it..)
     -- and check identifiers live in other modules using TH stage checks. tcSimplifyStagedExpr
     -- also resolves the LIE constraints to detect e.g. instance ambiguity
-    zonked_wrapped_expr' <- tcTopSpliceExpr Untyped $
+    zonked_wrapped_expr' <- tcTopSpliceExpr True Untyped $
            do { (expr', expr_ty) <- tcInferRhoNC expr
                 -- We manually wrap the typechecked expression in a call to toAnnotationWrapper
                 -- By instantiating the call >here< it gets registered in the
