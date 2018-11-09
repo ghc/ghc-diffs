@@ -2447,7 +2447,7 @@ newtype RunDelayedSplice =
 
 -- A Data instance which ignores the argument of 'ThModFinalizers'.
 instance Data RunDelayedSplice where
-  gunfold _ z _ = panic "RunDelayedSplice"
+  gunfold _ _ _ = panic "RunDelayedSplice"
   toConstr  a   = mkConstr (dataTypeOf a) "RunDelayedSplice" [] Data.Prefix
   dataTypeOf a  = mkDataType "HsExpr.RunDelayedSplice" [toConstr a]
 
