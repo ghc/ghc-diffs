@@ -419,12 +419,6 @@ tcRnSrcDecls explicit_mod_hdr decls
         -- Emit Typeable bindings
       ; tcg_env <- mkTypeableBinds
 
-        -- Finalizers must run after constraints are simplified, or some types
-        -- might not be complete when using reify (see #12777).
-      ; (tcg_env, tcl_env) <- setGblEnv tcg_env run_th_modfinalizers
-      ; setEnvs (tcg_env, tcl_env) $ do {
-
-      ; finishTH
 
       ; traceTc "Tc9" empty
 
@@ -448,6 +442,13 @@ tcRnSrcDecls explicit_mod_hdr decls
             <- {-# SCC "zonkTopDecls" #-}
                zonkTopDecls all_ev_binds binds rules
                             imp_specs fords ;
+
+        -- Finalizers must run after constraints are simplified, or some types
+        -- might not be complete when using reify (see #12777).
+      ; (tcg_env, tcl_env) <- setGblEnv tcg_env run_th_modfinalizers
+      ; setEnvs (tcg_env, tcl_env) $ do {
+
+      ; finishTH
       ; traceTc "Tc11" empty
 
       ; let { final_type_env = plusTypeEnv type_env bind_env
