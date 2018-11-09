@@ -53,9 +53,6 @@ import TcRnMonad
 import PrelNames
 import BuildTyCl ( TcMethInfo, MethInfo )
 import TcType
-import {-# SOURCE #-} TcSplice
-import {-# SOURCE #-} RnExpr
-import {-# SOURCE #-} TcExpr
 import TcMType
 import TcEnv   ( tcLookupGlobalOnly )
 import TcEvidence
@@ -82,7 +79,6 @@ import Outputable
 import Util
 import UniqFM
 import CoreSyn
-import {-# SOURCE #-} RnSplice( traceSplice, SpliceInfo(..) )
 
 import Control.Monad
 import Data.List  ( partition )
@@ -713,11 +709,6 @@ zonkGRHSs _ _ (XGRHSs _) = panic "zonkGRHSs"
 ************************************************************************
 -}
 
-spliceResultDoc :: LHsExpr GhcTc -> SDoc
-spliceResultDoc expr
-  = sep [ text "In the result of the splice:"
-        , nest 2 (char '$' <> ppr expr)
-        , text "To see what the splice expanded to, use -ddump-splices"]
 
 zonkLExprs :: ZonkEnv -> [LHsExpr GhcTcId] -> TcM [LHsExpr GhcTc]
 zonkLExpr  :: ZonkEnv -> LHsExpr GhcTcId   -> TcM (LHsExpr GhcTc)
@@ -776,32 +767,9 @@ zonkExpr env (HsTcBracketOut x body bs)
     zonk_b (PendingTcSplice n e) = do e' <- zonkLExpr env e
                                       return (PendingTcSplice n e')
 
-zonkExpr env (HsSpliceE _ (HsSplicedT _ _
-                              (ApplyThModFinalizers fn)
-                              (HsSplicedTcLclEnv lcl_env)
-                              orig_expr res_ty q_expr)) = do
-       { exp4 <- setLclEnv lcl_env $ do {
-        ; zonked_ty <- zonkTcType res_ty
-        ; zonked_q_expr <- zonkTopLExpr q_expr
-         -- See Note [Collecting modFinalizers in typed splices].
-        ; modfinalizers_ref <- newTcRef []
-         -- Run the expression
-        ; expr2 <- setStage (RunSplice modfinalizers_ref) $
-                    runMetaE zonked_q_expr
-        ; mod_finalizers <- readTcRef modfinalizers_ref
-        ; liftIO $ fn (ThModFinalizers mod_finalizers)
-        ; let si = (SpliceInfo    { spliceDescription = "expression"
-                                     , spliceIsDecl      = False
-                                     , spliceSource      = Just orig_expr
-                                     , spliceGenerated   = ppr expr2 })
-        ; traceSplice si
-         -- Rename and typecheck the spliced-in expression,
-         -- making sure it has type res_ty
-         -- These steps should never fail; this is a *typed* splice
-        ; addErrCtxt (spliceResultDoc zonked_q_expr) $ do
-          { (exp3, _fvs) <- rnLExpr expr2
-          ; tcMonoExpr exp3 (mkCheckExpType zonked_ty)} }
-       ; zonkExpr env (unLoc exp4) }
+zonkExpr env (HsSpliceE _ (HsSplicedT s)) =
+  runDelayedSplice s >>= zonkExpr env
+
 
 zonkExpr _ (HsSpliceE x s) = WARN( True, ppr s ) -- Should not happen
                            return (HsSpliceE x s)

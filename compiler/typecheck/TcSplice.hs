@@ -57,9 +57,11 @@ import HscMain
         -- These imports are the reason that TcSplice
         -- is very high up the module hierarchy
 import FV
+import RnSplice( traceSplice, SpliceInfo(..))
 import RdrName
 import HscTypes
 import Convert
+import RnExpr
 import RnEnv
 import RnUtils ( HsDocContext(..) )
 import RnFixity ( lookupFixityRn_help )
@@ -482,19 +484,53 @@ tcNestedSplice pop_stage (TcPending ps_var lie_var) splice_name expr res_ty
 tcNestedSplice _ _ splice_name _ _
   = pprPanic "tcNestedSplice: rename stage found" (ppr splice_name)
 
-tcTopSplice :: SpliceDecoration -> Name -> LHsExpr GhcRn -> ExpRhoType -> TcM (HsExpr GhcTc)
-tcTopSplice sd n expr res_ty
+tcTopSplice :: LHsExpr GhcRn -> ExpRhoType -> TcM (HsExpr GhcTc)
+tcTopSplice expr res_ty
   = do { -- Typecheck the expression,
          -- making sure it has type Q (T res_ty)
          res_ty <- expTypeToType res_ty
        ; meta_exp_ty <- tcTExpTy res_ty
        ; q_expr <- tcTopSpliceExpr False Typed $
                           tcMonoExpr expr (mkCheckExpType meta_exp_ty)
-       ; fn <- ApplyThModFinalizers <$> delayModFinalizersWithLclEnv
-       ; lcl_env <- HsSplicedTcLclEnv <$> getLclEnv
-       ; return (HsSpliceE noExt (HsSplicedT sd n fn lcl_env expr res_ty q_expr))
+       ; lcl_env <- getLclEnv
+       ; let delayed_splice
+              = RunDelayedSplice (runTopSplice lcl_env expr res_ty q_expr)
+       ; return (HsSpliceE noExt (HsSplicedT delayed_splice))
 
        }
+
+spliceResultDoc :: LHsExpr GhcTc -> SDoc
+spliceResultDoc expr
+  = sep [ text "In the result of the splice:"
+        , nest 2 (char '$' <> ppr expr)
+        , text "To see what the splice expanded to, use -ddump-splices"]
+
+-- This is called in the zonker
+runTopSplice :: TcLclEnv -> LHsExpr GhcRn
+                         -> TcType
+                         -> LHsExpr GhcTcId -> TcM (HsExpr GhcTc)
+runTopSplice lcl_env orig_expr res_ty q_expr
+  = setLclEnv lcl_env $ do {
+         zonked_ty <- zonkTcType res_ty
+       ; zonked_q_expr <- zonkTopLExpr q_expr
+        -- See Note [Collecting modFinalizers in typed splices].
+       ; modfinalizers_ref <- newTcRef []
+        -- Run the expression
+       ; expr2 <- setStage (RunSplice modfinalizers_ref) $
+                   runMetaE zonked_q_expr
+       ; mod_finalizers <- readTcRef modfinalizers_ref
+       ; addModFinalizersWithLclEnv (ThModFinalizers mod_finalizers)
+       ; let si = (SpliceInfo    { spliceDescription = "expression"
+                                    , spliceIsDecl      = False
+                                    , spliceSource      = Just orig_expr
+                                    , spliceGenerated   = ppr expr2 })
+       ; traceSplice si
+        -- Rename and typecheck the spliced-in expression,
+        -- making sure it has type res_ty
+        -- These steps should never fail; this is a *typed* splice
+       ; addErrCtxt (spliceResultDoc zonked_q_expr) $ do
+         { (exp3, _fvs) <- rnLExpr expr2
+         ; unLoc <$> tcMonoExpr exp3 (mkCheckExpType zonked_ty)} }
 
 
 {-
