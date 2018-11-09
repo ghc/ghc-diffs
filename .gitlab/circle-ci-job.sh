@@ -81,25 +81,21 @@ done
 
 if [ "$outcome" == "\"success\"" ]; then
     echo The build passed
-
     artifactsBody=$(curl -s https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}/artifacts?circle-token=${CIRCLECI_TOKEN})
-    echo "artifacts: $artifactsBody"
-
-    echo $artifactsBody | jq '.[] | .url' | xargs wget
+    (echo $artifactsBody | jq '.[] | .url' | xargs wget -q) || echo "No artifacts"
     exit 0
 else
     echo The build failed
 
     artifactsBody=$(curl -s https://circleci.com/api/v1.1/project/github/${GITHUB_ORG}/${GITHUB_PROJECT}/${build_num}/artifacts?circle-token=${CIRCLECI_TOKEN})
-    echo "artifacts: $artifactsBody"
+    (echo $artifactsBody | jq '.[] | .url' | xargs wget -q) || echo "No artifacts"
 
     failing_step=$(echo $STATUS_RESP | jq '.steps | .[] | .actions | .[] | select(.status != "success")')
     failing_step_name=$(echo $failing_step | jq '.name' | ghc -e 'getContents >>= putStrLn . read')
-    echo "Step JSON: $failing_step"
     echo "Failing step: $failing_step_name"
 
     failing_cmds=$(echo $failing_step | jq '.bash_command' | ghc -e 'getContents >>= putStrLn . read')
-    echo "Failing commands:"
+    echo "Failing command(s):"
     echo $failing_cmds
 
     log_url=$(echo $failing_step | jq '.output_url' | ghc -e 'getContents >>= putStrLn . read')
