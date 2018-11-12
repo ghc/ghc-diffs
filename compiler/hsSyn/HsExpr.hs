@@ -2435,17 +2435,17 @@ isTypedSplice _                  = False   -- Quasi-quotes are untyped splices
 --
 newtype ThModFinalizers = ThModFinalizers [ForeignRef (TH.Q ())]
 
-
 -- A Data instance which ignores the argument of 'ThModFinalizers'.
 instance Data ThModFinalizers where
   gunfold _ z _ = z $ ThModFinalizers []
   toConstr  a   = mkConstr (dataTypeOf a) "ThModFinalizers" [] Data.Prefix
   dataTypeOf a  = mkDataType "HsExpr.ThModFinalizers" [toConstr a]
 
+-- See Note [Running typed splices in the zonker]
 newtype RunDelayedSplice =
   RunDelayedSplice { runDelayedSplice :: (TcM (HsExpr GhcTc)) }
 
--- A Data instance which ignores the argument of 'ThModFinalizers'.
+-- A Data instance which ignores the argument of 'RunDelayedSplice'.
 instance Data RunDelayedSplice where
   gunfold _ _ _ = panic "RunDelayedSplice"
   toConstr  a   = mkConstr (dataTypeOf a) "RunDelayedSplice" [] Data.Prefix
@@ -2582,7 +2582,7 @@ pprSplice (HsUntypedSplice _ NoParens n e)
   = ppr_splice empty  n e empty
 pprSplice (HsQuasiQuote _ n q _ s)      = ppr_quasi n q s
 pprSplice (HsSpliced _ _ thing)         = ppr thing
-pprSplice (HsSplicedT {})               = text "Unevaluated splice"
+pprSplice (HsSplicedT {})               = text "Unevaluated typed splice"
 pprSplice (XSplice x)                   = ppr x
 
 ppr_quasi :: OutputableBndr p => p -> p -> FastString -> SDoc
