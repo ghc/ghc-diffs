@@ -55,6 +55,8 @@ import {-# SOURCE #-} TcSplice
     , tcTopSpliceExpr
     )
 
+import TcHsSyn
+
 import GHCi.RemoteTypes ( ForeignRef )
 import qualified Language.Haskell.TH as TH (Q)
 
@@ -305,8 +307,9 @@ runRnSplice flavour run_meta ppr_res splice
 
              -- Typecheck the expression
        ; meta_exp_ty   <- tcMetaTy meta_ty_name
-       ; zonked_q_expr <- tcTopSpliceExpr True Untyped $
-                          tcPolyExpr the_expr meta_exp_ty
+       ; zonked_q_expr <- zonkTopLExpr =<<
+                            tcTopSpliceExpr Untyped
+                              (tcPolyExpr the_expr meta_exp_ty)
 
              -- Run the expression
        ; mod_finalizers_ref <- newTcRef []

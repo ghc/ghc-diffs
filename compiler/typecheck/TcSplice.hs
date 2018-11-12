@@ -437,7 +437,7 @@ When a variable is used, we compare
 ************************************************************************
 -}
 
-tcSpliceExpr splice@(HsTypedSplice _ sd name expr) res_ty
+tcSpliceExpr splice@(HsTypedSplice _ _ name expr) res_ty
   = addErrCtxt (spliceCtxtDoc splice) $
     setSrcSpan (getLoc expr)    $ do
     { stage <- getStage
@@ -491,7 +491,7 @@ tcTopSplice expr res_ty
          -- making sure it has type Q (T res_ty)
          res_ty <- expTypeToType res_ty
        ; meta_exp_ty <- tcTExpTy res_ty
-       ; q_expr <- tcTopSpliceExpr False Typed $
+       ; q_expr <- tcTopSpliceExpr Typed $
                           tcMonoExpr expr (mkCheckExpType meta_exp_ty)
        ; lcl_env <- getLclEnv
        ; let delayed_splice
@@ -548,7 +548,7 @@ spliceCtxtDoc splice
          2 (pprSplice splice)
 
 -------------------
-tcTopSpliceExpr :: Bool -> SpliceType -> TcM (LHsExpr GhcTc) -> TcM (LHsExpr GhcTc)
+tcTopSpliceExpr :: SpliceType -> TcM (LHsExpr GhcTc) -> TcM (LHsExpr GhcTc)
 -- Note [How top-level splices are handled]
 -- Type check an expression that is the body of a top-level splice
 --   (the caller will compile and run it)
@@ -558,7 +558,7 @@ tcTopSpliceExpr :: Bool -> SpliceType -> TcM (LHsExpr GhcTc) -> TcM (LHsExpr Ghc
 -- The recursive call to tcPolyExpr will simply expand the
 -- inner escape before dealing with the outer one
 
-tcTopSpliceExpr doZonk isTypedSplice tc_action
+tcTopSpliceExpr isTypedSplice tc_action
   = checkNoErrs $  -- checkNoErrs: must not try to run the thing
                    -- if the type checker fails!
     unsetGOptM Opt_DeferTypeErrors $
@@ -573,8 +573,7 @@ tcTopSpliceExpr doZonk isTypedSplice tc_action
        ; const_binds     <- simplifyTop wanted
 
           -- Zonk it and tie the knot of dictionary bindings
-       ; let z = if doZonk then zonkTopLExpr else return
-       ; z  (mkHsDictLet (EvBinds const_binds) expr') }
+       ; return $ mkHsDictLet (EvBinds const_binds) expr' }
 
 {-
 ************************************************************************
@@ -593,7 +592,7 @@ runAnnotation target expr = do
     -- Check the instances we require live in another module (we want to execute it..)
     -- and check identifiers live in other modules using TH stage checks. tcSimplifyStagedExpr
     -- also resolves the LIE constraints to detect e.g. instance ambiguity
-    zonked_wrapped_expr' <- tcTopSpliceExpr True Untyped $
+    zonked_wrapped_expr' <- zonkTopLExpr =<< tcTopSpliceExpr Untyped (
            do { (expr', expr_ty) <- tcInferRhoNC expr
                 -- We manually wrap the typechecked expression in a call to toAnnotationWrapper
                 -- By instantiating the call >here< it gets registered in the
@@ -604,7 +603,7 @@ runAnnotation target expr = do
                       = L loc (mkHsWrap wrapper
                                  (HsVar noExt (L loc to_annotation_wrapper_id)))
               ; return (L loc (HsApp noExt
-                                specialised_to_annotation_wrapper_expr expr')) }
+                                specialised_to_annotation_wrapper_expr expr')) })
 
     -- Run the appropriately wrapped expression to get the value of
     -- the annotation and its dictionaries. The return value is of
