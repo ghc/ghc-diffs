@@ -441,13 +441,13 @@ tcSpliceExpr splice@(HsTypedSplice _ sd name expr) res_ty
     setSrcSpan (getLoc expr)    $ do
     { stage <- getStage
     ; case stage of
-          Splice {}            -> tcTopSplice sd name expr res_ty
+          Splice {}            -> tcTopSplice expr res_ty
           Brack pop_stage pend -> tcNestedSplice pop_stage pend name expr res_ty
           RunSplice _          ->
             -- See Note [RunSplice ThLevel] in "TcRnTypes".
             pprPanic ("tcSpliceExpr: attempted to typecheck a splice when " ++
                       "running another splice") (ppr splice)
-          Comp                 -> tcTopSplice sd name expr res_ty
+          Comp                 -> tcTopSplice expr res_ty
     }
 tcSpliceExpr splice _
   = pprPanic "tcSpliceExpr" (ppr splice)
