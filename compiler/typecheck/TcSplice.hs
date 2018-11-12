@@ -506,6 +506,7 @@ spliceResultDoc expr
         , text "To see what the splice expanded to, use -ddump-splices"]
 
 -- This is called in the zonker
+-- See Note [Running typed splices in the zonker]
 runTopSplice :: TcLclEnv -> LHsExpr GhcRn
                          -> TcType
                          -> LHsExpr GhcTcId -> TcM (HsExpr GhcTc)
@@ -803,6 +804,43 @@ runMeta' show_code ppr_hs run_and_convert expr
         failWithTc msg
 
 {-
+Note [Running typed splices in the zonker]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+See #15471 for the full discussion.
+
+For many years typed splices were run immediately after they were type checked
+however, this is too early as it means to zonk some type variables before
+they can be unified with type variables in the surrounding context.
+
+For example,
+
+```
+module A where
+
+test_foo = [|| id ||]
+
+module B where
+
+import A
+
+qux = $$(test_foo)
+```
+
+We would expect `qux` to have inferred type `forall a . a -> a` but if
+we run the splices too early the unified variables are zonked to `Any`. The
+inferred type is the unusable `Any -> Any`.
+
+Deferring running the splice until later, in the zonker, means that the
+unification variables propagate upwards from the splice into the surrounding
+context and are unified correctly.
+
+This is implemented by bundling the TcM action which runs the aplice into
+a `HsSplicedT` constructor. This is then just run and zonked in the zonker
+and the expression inserted into the AST as normal.
+
+
+
 Note [Exceptions in TH]
 ~~~~~~~~~~~~~~~~~~~~~~~
 Suppose we have something like this
