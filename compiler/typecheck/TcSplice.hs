@@ -499,11 +499,6 @@ tcTopSplice expr res_ty
 
        }
 
-spliceResultDoc :: LHsExpr GhcTc -> SDoc
-spliceResultDoc expr
-  = sep [ text "In the result of the splice:"
-        , nest 2 (char '$' <> ppr expr)
-        , text "To see what the splice expanded to, use -ddump-splices"]
 
 -- This is called in the zonker
 -- See Note [Running typed splices in the zonker]
@@ -516,16 +511,15 @@ runTopSplice lcl_env orig_expr res_ty q_expr
        ; zonked_q_expr <- zonkTopLExpr q_expr
         -- See Note [Collecting modFinalizers in typed splices].
        ; modfinalizers_ref <- newTcRef []
-        -- Run the expression
+         -- Run the expression
        ; expr2 <- setStage (RunSplice modfinalizers_ref) $
-                   runMetaE zonked_q_expr
+                    runMetaE zonked_q_expr
        ; mod_finalizers <- readTcRef modfinalizers_ref
-       ; addModFinalizersWithLclEnv (ThModFinalizers mod_finalizers)
-       ; let si = (SpliceInfo    { spliceDescription = "expression"
+       ; addModFinalizersWithLclEnv $ ThModFinalizers mod_finalizers
+       ; traceSplice (SpliceInfo    { spliceDescription = "expression"
                                     , spliceIsDecl      = False
                                     , spliceSource      = Just orig_expr
                                     , spliceGenerated   = ppr expr2 })
-       ; traceSplice si
         -- Rename and typecheck the spliced-in expression,
         -- making sure it has type res_ty
         -- These steps should never fail; this is a *typed* splice
@@ -546,6 +540,12 @@ spliceCtxtDoc :: HsSplice GhcRn -> SDoc
 spliceCtxtDoc splice
   = hang (text "In the Template Haskell splice")
          2 (pprSplice splice)
+
+spliceResultDoc :: LHsExpr GhcTc -> SDoc
+spliceResultDoc expr
+  = sep [ text "In the result of the splice:"
+        , nest 2 (char '$' <> ppr expr)
+        , text "To see what the splice expanded to, use -ddump-splices"]
 
 -------------------
 tcTopSpliceExpr :: SpliceType -> TcM (LHsExpr GhcTc) -> TcM (LHsExpr GhcTc)
