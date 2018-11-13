@@ -769,7 +769,6 @@ zonkExpr env (HsTcBracketOut x body bs)
 zonkExpr env (HsSpliceE _ (HsSplicedT s)) =
   runDelayedSplice s >>= zonkExpr env
 
-
 zonkExpr _ (HsSpliceE x s) = WARN( True, ppr s ) -- Should not happen
                            return (HsSpliceE x s)
 
