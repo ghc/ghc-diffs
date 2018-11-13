@@ -709,7 +709,6 @@ zonkGRHSs _ _ (XGRHSs _) = panic "zonkGRHSs"
 ************************************************************************
 -}
 
-
 zonkLExprs :: ZonkEnv -> [LHsExpr GhcTcId] -> TcM [LHsExpr GhcTc]
 zonkLExpr  :: ZonkEnv -> LHsExpr GhcTcId   -> TcM (LHsExpr GhcTc)
 zonkExpr   :: ZonkEnv -> HsExpr GhcTcId    -> TcM (HsExpr GhcTc)
