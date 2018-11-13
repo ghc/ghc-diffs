@@ -516,10 +516,10 @@ runTopSplice lcl_env orig_expr res_ty q_expr
                     runMetaE zonked_q_expr
        ; mod_finalizers <- readTcRef modfinalizers_ref
        ; addModFinalizersWithLclEnv $ ThModFinalizers mod_finalizers
-       ; traceSplice (SpliceInfo    { spliceDescription = "expression"
-                                    , spliceIsDecl      = False
-                                    , spliceSource      = Just orig_expr
-                                    , spliceGenerated   = ppr expr2 })
+       ; traceSplice (SpliceInfo { spliceDescription = "expression"
+                                 , spliceIsDecl      = False
+                                 , spliceSource      = Just orig_expr
+                                 , spliceGenerated   = ppr expr2 })
         -- Rename and typecheck the spliced-in expression,
         -- making sure it has type res_ty
         -- These steps should never fail; this is a *typed* splice
@@ -603,7 +603,8 @@ runAnnotation target expr = do
                       = L loc (mkHsWrap wrapper
                                  (HsVar noExt (L loc to_annotation_wrapper_id)))
               ; return (L loc (HsApp noExt
-                                specialised_to_annotation_wrapper_expr expr')) })
+                                specialised_to_annotation_wrapper_expr expr'))
+                                })
 
     -- Run the appropriately wrapped expression to get the value of
     -- the annotation and its dictionaries. The return value is of
