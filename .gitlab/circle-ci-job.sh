@@ -52,7 +52,7 @@ GITHUB_BRANCH="gitlab/${CI_RUNNER_ID}/${CI_JOB_ID}"
 # validate-x86_64-linux, validate-i386-linux, ...
 CIRCLE_JOB=$1
 
-git remote add gh git@github.com:${GITHUB_ORG}/${GITHUB_PROJECT} || echo "gh remote already present"
+git remote add gh git@github.com:${GITHUB_ORG}/${GITHUB_PROJECT} &> /dev/null || echo "gh remote already present"
 git checkout -b ${GITHUB_BRANCH} || true # if we've already done this before
 git push gh ${GITHUB_BRANCH} || true # if we've already done this before
 
@@ -107,17 +107,17 @@ else
     (echo $artifactsBody | jq '.[] | .url' | xargs wget -q) || echo "No artifacts"
 
     failing_step=$(echo $STATUS_RESP | jq '.steps | .[] | .actions | .[] | select(.status != "success")')
-    failing_step_name=$(echo $failing_step | jq '.name' | ghc -e 'getContents >>= putStrLn . read')
+    failing_step_name=$(echo $failing_step | jq '.name' | sed -e 's/^"//' -e 's/"$//' -e 's/\\r\\n/\n/')
     echo "Failing step: $failing_step_name"
 
-    failing_cmds=$(echo $failing_step | jq '.bash_command' | ghc -e 'getContents >>= putStrLn . read')
+    failing_cmds=$(echo $failing_step | jq '.bash_command' | sed -e 's/^"//' -e 's/"$//' -e 's/\\r\\n/\n/')
     echo "Failing command(s):"
     echo $failing_cmds
 
-    log_url=$(echo $failing_step | jq '.output_url' | ghc -e 'getContents >>= putStrLn . read')
+    log_url=$(echo $failing_step | jq '.output_url' | sed -e 's/^"//' -e 's/"$//' -e 's/\\r\\n/\n/')
     echo "Log url: $log_url"
 
-    last_log_lines=$(curl -s $log_url | gunzip | jq '.[] | select(.type == "out") | .message' | ghc -e 'getContents >>= putStrLn . read' | tail -50)
+    last_log_lines=$(curl -s $log_url | gunzip | jq '.[] | select(.type == "out") | .message' | sed -e 's/^"//' -e 's/"$//' -e 's/\\r\\n/\n/' | tail -50)
     echo End of the build log:
     echo $last_log_lines
 
