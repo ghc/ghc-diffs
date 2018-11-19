@@ -12,7 +12,7 @@ before_script:
   #- sudo apt-get update -y
   #- sudo apt-get install jq wget -y
   #- 'which ssh-agent || sudo apt-get install openssh-client -y'
-  #- eval $(ssh-agent -s)
+  - eval $(ssh-agent -s)
   ## Add the SSH key stored in SSH_PRIVATE_KEY variable to the agent store
   ## We're using tr to fix line endings which makes ed25519 keys work
   ## without extra base64 encoding.
