@@ -1,4 +1,4 @@
-image: ghcci/x86_64-linux:0.0.4
+# image: ghcci/x86_64-linux:0.0.4
 
 before_script:
   - mkdir -p ~/.ssh
