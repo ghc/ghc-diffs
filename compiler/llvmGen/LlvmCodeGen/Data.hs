@@ -31,13 +31,19 @@ import Outputable
 structStr :: LMString
 structStr = fsLit "_struct"
 
+-- | The LLVM visibility of the label
+linkage :: CLabel -> LlvmLinkageType
+linkage lbl = if externallyVisibleCLabel lbl
+              then ExternallyVisible else Internal
+
 -- ----------------------------------------------------------------------------
 -- * Top level
 --
 
 -- | Pass a CmmStatic section to an equivalent Llvm code.
 genLlvmData :: (Section, CmmStatics) -> LlvmM LlvmData
-genLlvmData (sec, Statics alias [CmmStaticLit (CmmLabel lbl), CmmStaticLit ind, _, _])
+-- See note [compile-time elimination of static indirections]
+genLlvmData (_, Statics alias [CmmStaticLit (CmmLabel lbl), CmmStaticLit ind, _, _])
   | lbl == mkIndStaticInfoLabel
   , let labelInd (CmmLabelOff l _) = Just l
         labelInd (CmmLabel l) = Just l
@@ -46,13 +52,19 @@ genLlvmData (sec, Statics alias [CmmStaticLit (CmmLabel lbl), CmmStaticLit ind, 
   , isAliasToLocalOrIntoThisModule alias ind' = do
     label <- strCLabel_llvm alias
     label' <- strCLabel_llvm ind'
-    lmsec <- llvmSection sec
-    let link     = if (externallyVisibleCLabel alias)
-                      then ExternallyVisible else Internal
-        aliasDef = LMGlobalVar label i8Ptr link lmsec Nothing Alias
-        origDef  = LMStaticPointer $ LMGlobalVar label' i8Ptr link lmsec Nothing Alias -- FIXME
+    let link     = linkage alias
+        link'    = linkage ind'
+        -- the LLVM type we give the alias is an empty struct type
+        -- but it doesn't really matter, as the pointer is only
+        -- used for (bit/int)casting.
+        tyAlias  = LMAlias (label `appendFS` structStr, LMStructU [])
 
-    pure ([LMGlobal aliasDef $ Just origDef], [i8])
+        aliasDef = LMGlobalVar label tyAlias link Nothing Nothing Alias
+        -- we don't know the type of the indirectee here
+        indType = error "will be filled by 'aliasify', later"
+        orig     = LMStaticPointer $ LMGlobalVar label' indType link' Nothing Nothing Alias
+
+    pure ([LMGlobal aliasDef $ Just orig], [tyAlias])
 
 genLlvmData (sec, Statics lbl xs) = do
     label <- strCLabel_llvm lbl
@@ -61,11 +73,10 @@ genLlvmData (sec, Statics lbl xs) = do
     let types   = map getStatType static
 
         strucTy = LMStruct types
-        tyAlias = LMAlias ((label `appendFS` structStr), strucTy)
+        tyAlias = LMAlias (label `appendFS` structStr, strucTy)
 
         struct         = Just $ LMStaticStruc static tyAlias
-        link           = if (externallyVisibleCLabel lbl)
-                            then ExternallyVisible else Internal
+        link           = linkage lbl
         align          = case sec of
                             Section CString _ -> Just 1
                             _                 -> Nothing
