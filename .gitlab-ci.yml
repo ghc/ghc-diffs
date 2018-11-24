@@ -1,5 +1,8 @@
 image: ghcci/x86_64-linux:0.0.6
 
+variables:
+  GIT_SSL_NO_VERIFY: "1"
+
 before_script:
   - sed -i -e 's%url *= *\.\./%url = https://git.haskell.org/%' .gitmodules
   - git submodule sync --recursive
@@ -7,6 +10,24 @@ before_script:
   - git checkout .gitmodules
   - sudo chown ghc:ghc -R .
   - bash .circleci/prepare-system.sh
+
+  # For CircleCI script
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  #- git config --global user.email "user@example.com"
+  #- git config --global user.name "User name"
+  - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+  - chmod 644 ~/.ssh/known_hosts
+  #- sudo apt-get update -y
+  #- sudo apt-get install jq wget -y
+  #- 'which ssh-agent || sudo apt-get install openssh-client -y'
+  - eval $(ssh-agent -s)
+  ## Add the SSH key stored in SSH_PRIVATE_KEY variable to the agent store
+  ## We're using tr to fix line endings which makes ed25519 keys work
+  ## without extra base64 encoding.
+  ## https://gitlab.com/gitlab-examples/ssh-private-key/issues/1#note_48526556
+  ##
+  - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
 
 validate:
   script:
@@ -27,6 +48,53 @@ validate:
       THREADS=`mk/detect-cpu-count.sh`
       make test THREADS=$THREADS JUNIT_FILE=../../junit.xml
 
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    paths:
+      - ghc.tar.xz
+      - junit.xml
+
+
+# All validation jobs keep the bindists and test results are artifacts,
+# when we get far enough to generate them.
+#
+# This requires updating the maximum artifacts size limit in Gitlab to
+# something like 200MB.
+
+circleci-validate-x86_64-linux:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-linux"
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    paths:
+      - ghc.tar.xz
+      - junit.xml
+
+circleci-validate-i386-linux:
+  script: ".gitlab/circle-ci-job.sh validate-i386-linux"
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    paths:
+      - ghc.tar.xz
+      - junit.xml
+
+# circleci-validate-x86_64-freebsd:
+#   script: ".gitlab/circle-ci-job.sh validate-x86_64-freebsd"
+#   artifacts:
+#     when: always
+#     reports:
+#       junit: junit.xml
+#     paths:
+#       - ghc.tar.xz
+#       - junit.xml
+
+circleci-validate-x86_64-darwin:
+  script: ".gitlab/circle-ci-job.sh validate-x86_64-darwin"
   artifacts:
     when: always
     reports:
