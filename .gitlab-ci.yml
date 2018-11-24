@@ -12,6 +12,7 @@ before_script:
   - bash .circleci/prepare-system.sh
 
   # For CircleCI script
+  - sudo apt-get install jq
   - mkdir -p ~/.ssh
   - chmod 700 ~/.ssh
   #- git config --global user.email "user@example.com"
