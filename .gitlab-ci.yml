@@ -1,0 +1,36 @@
+image: ghcci/x86_64-linux:0.0.6
+
+before_script:
+  - sed -i -e 's%url *= *\.\./%url = https://git.haskell.org/%' .gitmodules
+  - git submodule sync --recursive
+  - git submodule update --init --recursive
+  - git checkout .gitmodules
+  - sudo chown ghc:ghc -R .
+  - bash .circleci/prepare-system.sh
+
+validate:
+  script:
+    - make clean || true
+    - ./boot
+    - ./configure
+    - |
+      echo 'HADDOCK_DOCS       = NO' >> mk/build.mk
+      echo 'BUILD_SPHINX_HTML  = NO' >> mk/build.mk
+      echo 'BUILD_SPHINX_PDF   = NO' >> mk/build.mk
+    - |
+      THREADS=`mk/detect-cpu-count.sh`
+      make V=0 -j$THREADS HADDOCK_DOCS=NO
+    - |
+      make binary-dist TAR_COMP_OPTS="-1"
+      mv ghc-*.tar.xz ghc.tar.xz
+    - |
+      THREADS=`mk/detect-cpu-count.sh`
+      make test THREADS=$THREADS JUNIT_FILE=../../junit.xml
+
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    paths:
+      - ghc.tar.xz
+      - junit.xml
