@@ -1,4 +1,4 @@
-image: ghcci/x86_64-linux:0.0.6
+image: ghcci/x86_64-linux:0.0.8
 
 variables:
   GIT_SSL_NO_VERIFY: "1"
@@ -12,7 +12,6 @@ before_script:
   - bash .circleci/prepare-system.sh
 
   # For CircleCI script
-  - sudo apt-get install jq wget
   - mkdir -p ~/.ssh
   - chmod 700 ~/.ssh
   #- git config --global user.email "user@example.com"
