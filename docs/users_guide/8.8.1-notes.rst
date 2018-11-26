@@ -79,6 +79,11 @@ Compiler
 
 - The deprecated ghc-flag ``-Wamp`` has been removed.
 
+- Support for object splitting with the flag ``-split-objs`` is removed.  Using
+  this flag now results in a warning and does nothing.  Use
+  :ghc-flag:`-split-sections` instead.
+
+
 Runtime system
 ~~~~~~~~~~~~~~
 
