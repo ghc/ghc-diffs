@@ -689,6 +689,16 @@ AC_DEFUN([FPTOOLS_SET_C_LD_FLAGS],
 
     esac
 
+    # Ensure we product big PE objects. Otherwise we tend to blow
+    # through the 32k PE section limit. See #15934.
+    case $$1 when
+    *-w64-mingw32)
+      $$2="$$2 -Wa-mbig-obj"
+      $$3="$$3 -Wl,--oformat pe-bigobj-x86-64"
+      $$4="$$4 --oformat pe-bigobj-x86-64"
+      ;;
+    esac
+
     # If gcc knows about the stack protector, turn it off.
     # Otherwise the stack-smash handler gets triggered.
     echo 'int main(void) {return 0;}' > conftest.c
