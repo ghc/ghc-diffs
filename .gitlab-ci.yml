@@ -65,6 +65,9 @@ validate-x86_64-darwin:
     - x86_64-darwin
   variables:
     GHC_VERSION: 8.6.2
+    MACOSX_DEPLOYMENT_TARGET: "10.7"
+    # Only Sierra and onwards supports clock_gettime. See #12858
+    ac_cv_func_clock_gettime: "no"
   before_script:
     - python .gitlab/fix-submodules.py
     - git submodule sync --recursive
@@ -72,7 +75,16 @@ validate-x86_64-darwin:
     - git checkout .gitmodules
 
     - bash .gitlab/darwin-init.sh
-    - PATH="`pwd`/ghc-$GHC_VERSION/bin:$PATH"
+    - PATH="`pwd`/toolchain/bin:$PATH"
+      # Disable sphinx PDF output as MacTeX apparently doesn't provide xelatex
+    - echo "BUILD_SPHINX_PDF=NO" >> mk/build.mk
+  after_script:
+    - cp -Rf $HOME/.cabal cabal-cache
+  cache:
+    key: darwin
+    paths:
+      - cabal-cache
+      - toolchain
 
 validate-x86_64-linux:
   extends: .validate
@@ -87,6 +99,13 @@ validate-x86_64-linux:
     - bash .circleci/prepare-system.sh
     # workaround for docker permissions
     - sudo chown ghc:ghc -R .
+  after_script:
+    - cp -Rf $HOME/.cabal cabal-cache
+  cache:
+    key: darwin
+    paths:
+      - cabal-cache
+      - toolchain
 
 ############################################################
 # Validation via Pipelines (make, Windows)
@@ -100,9 +119,11 @@ validate-x86_64-windows:
     - |
       set MSYSTEM=MINGW64
       python boot
-      bash -c './configure --with-ghc=`pwd`/ghc-$GHC_VERSION/bin/ghc --enable-tarballs-autodownload HappyCmd=`pwd`/ghc-$GHC_VERSION/bin/happy AlexCmd=`pwd`/ghc-$GHC_VERSION/bin/alex'
-    - bash -c "PATH=`pwd`/ghc-$GHC_VERSION/bin:$PATH hadrian/build.cabal.sh -j`mk/detect-cpu-count.sh` --flavour=Quick"
-    - bash -c "PATH=`pwd`/ghc-$GHC_VERSION/bin:$PATH hadrian/build.cabal.sh binary-dist"
+      bash -c './configure --with-ghc=`pwd`/toolchain/bin/ghc --enable-tarballs-autodownload HappyCmd=`pwd`/toolchain/bin/happy AlexCmd=`pwd`/toolchain/bin/alex'
+      mkdir -p _build
+      cp -R inplace/mingw _build/mingw
+    - bash -c "PATH=`pwd`/toolchain/bin:$PATH hadrian/build.cabal.sh -j`mk/detect-cpu-count.sh` --flavour=Quick"
+    - bash -c "PATH=`pwd`/toolchain/bin:$PATH hadrian/build.cabal.sh binary-dist"
     - mv ghc-*.tar.xz ghc.tar.xz
     - bash -c 'make V=0 -j`mk/detect-cpu-count.sh` HADDOCK_DOCS=NO test THREADS=$THREADS JUNIT_FILE=../../junit.xml'
     - cp -Rf $APPDATA/cabal cabal-cache
