@@ -38,11 +38,10 @@ gitlab_repo=$(echo $CI_REPOSITORY_URL | cut -d/ -f5 | cut -d. -f1)
 
 BODY="{ \"jobType\": \"$CIRCLE_JOB\", \"source\": { \"user\": \"$gitlab_user\", \"project\":\"$gitlab_repo\", \"commit\":\"$CI_COMMIT_SHA\" }, \"pipelineID\": $CI_PIPELINE_ID, \"runnerID\": $CI_RUNNER_ID, \"jobID\": $CI_JOB_ID }"
 
-echo Sending: $BODY
 
-RESP=$(curl -XPOST -H "Content-Type: application/json" -d "$BODY" \
+RESP=$(curl -s -XPOST -H "Content-Type: application/json" -d "$BODY" \
 	    http://gitlab.staging.haskell.org:8888/job)
-echo Got: $RESP
+
 if [ $? -eq 0 ]; then
     build_num=$(echo $RESP | jq '.build_num')
     circle_url=$(echo $RESP | jq '.url')
