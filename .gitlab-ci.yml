@@ -112,6 +112,8 @@ validate-x86_64-windows:
     paths:
       - ghc.tar.xz
       - junit.xml
+  tags:
+    - circleci
 
 # All validation jobs keep the bindists and test results are artifacts,
 # when we get far enough to generate them.
