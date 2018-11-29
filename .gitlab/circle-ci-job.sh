@@ -21,8 +21,6 @@
 
 #!/usr/bin/env sh
 
-set -e
-
 [ $# -gt 0 ] || (echo You need to pass the Circle CI job type as argument to this script; exit 1)
 [ ${CI_RUNNER_ID:-} ] || (echo "CI_RUNNER_ID is not set"; exit 1)
 [ ${CI_JOB_ID:-} ] || (echo "CI_JOB_ID is not set"; exit 1)
@@ -42,7 +40,7 @@ echo Sending: $BODY
 
 RESP=$(curl -s -X POST -H "Content-Type: application/json" -d "$BODY" \
 	    http://localhost:8888/job)
-echo $RESP
+echo Got: $RESP
 if [ $? -eq 0 ]; then
     build_num=$(echo $RESP | jq '.build_num')
     circle_url=$(echo $RESP | jq '.url')
