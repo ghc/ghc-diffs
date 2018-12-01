@@ -69,7 +69,7 @@ lintStgTopBindings :: forall a . (OutputablePass a, BinderP a ~ Id)
 
 lintStgTopBindings dflags this_mod unarised whodunnit binds
   = {-# SCC "StgLint" #-}
-    case initL this_mod unarised (lint_binds binds) of
+    case initL this_mod unarised top_level_binds (lint_binds binds) of
       Nothing  ->
         return ()
       Just msg -> do
@@ -83,6 +83,10 @@ lintStgTopBindings dflags this_mod unarised whodunnit binds
                   text "*** End of Offense ***"])
         Err.ghcExit dflags 1
   where
+    -- Bring all top-level binds into scope because CoreToStg does not generate
+    -- bindings in dependency order (so we may see a use before its definition).
+    top_level_binds = mkVarSet (bindersOfTopBinds binds)
+
     lint_binds :: [GenStgTopBinding a] -> LintM ()
 
     lint_binds [] = return ()
@@ -222,7 +226,26 @@ lintAlt (DataAlt _, bndrs, rhs) = do
 {-
 ************************************************************************
 *                                                                      *
-\subsection[lint-monad]{The Lint monad}
+Utilities
+*                                                                      *
+************************************************************************
+-}
+
+bindersOf :: BinderP a ~ Id => GenStgBinding a -> [Id]
+bindersOf (StgNonRec binder _) = [binder]
+bindersOf (StgRec pairs)       = [binder | (binder, _) <- pairs]
+
+bindersOfTop :: BinderP a ~ Id => GenStgTopBinding a -> [Id]
+bindersOfTop (StgTopLifted bind) = bindersOf bind
+bindersOfTop (StgTopStringLit binder _) = [binder]
+
+bindersOfTopBinds :: BinderP a ~ Id => [GenStgTopBinding a] -> [Id]
+bindersOfTopBinds = foldr ((++) . bindersOfTop) []
+
+{-
+************************************************************************
+*                                                                      *
+The Lint monad
 *                                                                      *
 ************************************************************************
 -}
@@ -262,16 +285,13 @@ pp_binders bs
     pp_binder b
       = hsep [ppr b, dcolon, ppr (idType b)]
 
-initL :: Module -> Bool -> LintM a -> Maybe MsgDoc
-initL this_mod unarised (LintM m)
-  = case (m this_mod lf [] emptyVarSet emptyBag) of { (_, errs) ->
-    if isEmptyBag errs then
-        Nothing
-    else
-        Just (vcat (punctuate blankLine (bagToList errs)))
-    }
-  where
-    lf = LintFlags unarised
+initL :: Module -> Bool -> IdSet -> LintM a -> Maybe MsgDoc
+initL this_mod unarised locals (LintM m) = do
+  let (_, errs) = m this_mod (LintFlags unarised) [] locals emptyBag
+  if isEmptyBag errs then
+      Nothing
+  else
+      Just (vcat (punctuate blankLine (bagToList errs)))
 
 instance Functor LintM where
       fmap = liftM
