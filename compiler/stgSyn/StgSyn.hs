@@ -47,6 +47,7 @@ module StgSyn (
         StgOp(..),
 
         -- utils
+        bindersOfTop, bindersOf, bindersOfTopBinds, bindersOfBinds,
         topStgBindHasCafRefs, stgArgHasCafRefs, stgRhsArity,
         isDllConApp,
         stgArgType,
@@ -109,6 +110,20 @@ data GenStgTopBinding pass
 data GenStgBinding pass
   = StgNonRec (BinderP pass) (GenStgRhs pass)
   | StgRec    [(BinderP pass, GenStgRhs pass)]
+
+bindersOfTop :: BinderP a ~ Id => GenStgTopBinding a -> [Id]
+bindersOfTop (StgTopLifted bind) = bindersOf bind
+bindersOfTop (StgTopStringLit binder _) = [binder]
+
+bindersOf :: BinderP a ~ Id => GenStgBinding a -> [Id]
+bindersOf (StgNonRec binder _) = [binder]
+bindersOf (StgRec pairs)       = [binder | (binder, _) <- pairs]
+
+bindersOfTopBinds :: BinderP a ~ Id => [GenStgTopBinding a] -> [Id]
+bindersOfTopBinds = foldr ((++) . bindersOfTop) []
+
+bindersOfBinds :: BinderP a ~ Id => [GenStgBinding a] -> [Id]
+bindersOfBinds = foldr ((++) . bindersOf) []
 
 {-
 ************************************************************************

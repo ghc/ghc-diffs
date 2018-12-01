@@ -122,8 +122,9 @@ import TidyPgm
 import CorePrep
 import CoreToStg        ( coreToStg )
 import qualified StgCmm ( codeGen )
-import StgSyn
+import StgSyn           ( StgTopBinding, pprGenStgTopBindings )
 import StgFVs           ( annTopBindingsFreeVars )
+import StgDeps          ( annTopBindingsDeps )
 import CostCentre
 import ProfInit
 import TyCon
@@ -1427,6 +1428,15 @@ doCodeGen hsc_env this_mod data_tycons
     let dflags = hsc_dflags hsc_env
 
     let stg_binds_w_fvs = annTopBindingsFreeVars stg_binds
+
+    dumpIfSet_dyn dflags Opt_D_dump_stg "Before codegen:" $
+      pprGenStgTopBindings stg_binds_w_fvs
+
+    let stg_binds_w_deps = annTopBindingsDeps this_mod stg_binds
+
+    dumpIfSet_dyn dflags Opt_D_dump_stg "Before codegen (deps):" $
+      pprGenStgTopBindings stg_binds_w_deps
+
     let cmm_stream :: Stream IO CmmGroup ()
         cmm_stream = {-# SCC "StgCmm" #-}
             StgCmm.codeGen dflags this_mod data_tycons
