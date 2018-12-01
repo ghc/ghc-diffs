@@ -23,6 +23,8 @@
 
 set -e
 
+GHCCI_URL="localhost:8888"
+
 [ $# -gt 0 ] || (echo You need to pass the Circle CI job type as argument to this script; exit 1)
 [ ${CI_RUNNER_ID:-} ] || (echo "CI_RUNNER_ID is not set"; exit 1)
 [ ${CI_JOB_ID:-} ] || (echo "CI_JOB_ID is not set"; exit 1)
@@ -40,7 +42,7 @@ BODY="{ \"jobType\": \"$CIRCLE_JOB\", \"source\": { \"user\": \"$gitlab_user\", 
 
 
 RESP=$(curl -s -XPOST -H "Content-Type: application/json" -d "$BODY" \
-	    http://gitlab.staging.haskell.org:8888/job)
+	    http://${GHCCI_URL}/job)
 
 if [ $? -eq 0 ]; then
     build_num=$(echo $RESP | jq '.build_num')
@@ -55,7 +57,7 @@ echo Circle CI build number: $build_num
 echo Circle CI build page: $circle_url
 
 outcome="null"
-STATUS_URL="http://gitlab.staging.haskell.org:8888/job/${build_num}"
+STATUS_URL="http://${GHCCI_URL}/job/${build_num}"
 STATUS_RESP=""
 
 while [ "$outcome" == "null" ]; do
@@ -80,13 +82,13 @@ done
 
 if [ "$outcome" == "\"success\"" ]; then
     echo The build passed
-    artifactsBody=$(curl -s http://gitlab.staging.haskell.org:8888/job/${build_num}/artifacts)
+    artifactsBody=$(curl -s http://${GHCCI_URL}/job/${build_num}/artifacts)
     (echo $artifactsBody | jq '.[] | .url' | xargs wget -q) || echo "No artifacts"
     exit 0
 else
     echo The build failed
 
-    artifactsBody=$(curl -s http://gitlab.staging.haskell.org:8888/job/${build_num}/artifacts)
+    artifactsBody=$(curl -s http://${GHCCI_URL}/job/${build_num}/artifacts)
     (echo $artifactsBody | jq '.[] | .url' | xargs wget -q) || echo "No artifacts"
 
     failing_step=$(echo $STATUS_RESP | jq '.steps | .[] | .actions | .[] | select(.status != "success")')
