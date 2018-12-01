@@ -193,7 +193,7 @@ compileOne' m_tc_result mHscMessage
             o_time <- getModificationUTCTime object_filename
             let linkable = LM o_time this_mod [DotO object_filename]
             return hmi0 { hm_linkable = Just linkable }
-        (HscRecomp cgguts summary, HscInterpreted) -> do
+        (HscRecomp cgguts summary _mod_iface, HscInterpreted) -> do
             (hasStub, comp_bc, spt_entries) <-
                 hscInteractive hsc_env cgguts summary
 
@@ -214,14 +214,14 @@ compileOne' m_tc_result mHscMessage
             let linkable = LM unlinked_time (ms_mod summary)
                            (hs_unlinked ++ stub_o)
             return hmi0 { hm_linkable = Just linkable }
-        (HscRecomp cgguts summary, _) -> do
+        (st@HscRecomp{}, _) -> do
             output_fn <- getOutputFilename next_phase
                             (Temporary TFL_CurrentModule)
                             basename dflags next_phase (Just location)
             -- We're in --make mode: finish the compilation pipeline.
             _ <- runPipeline StopLn hsc_env
                               (output_fn,
-                               Just (HscOut src_flavour mod_name (HscRecomp cgguts summary)))
+                               Just (HscOut src_flavour mod_name st))
                               (Just basename)
                               Persistent
                               (Just location)
@@ -1104,13 +1104,13 @@ runPhase (HscOut src_flavour mod_name result) _ dflags = do
                        basename = dropExtension input_fn
                    liftIO $ compileEmptyStub dflags hsc_env' basename location mod_name
                    return (RealPhase StopLn, o_file)
-            HscRecomp cgguts mod_summary
+            HscRecomp cgguts mod_summary mod_iface
               -> do output_fn <- phaseOutputFilename next_phase
 
                     PipeState{hsc_env=hsc_env'} <- getPipeState
 
                     (outputFilename, mStub, foreign_files) <- liftIO $
-                      hscGenHardCode hsc_env' cgguts mod_summary output_fn
+                      hscGenHardCode hsc_env' cgguts mod_summary mod_iface output_fn
                     stub_o <- liftIO (mapM (compileStub hsc_env') mStub)
                     foreign_os <- liftIO $
                       mapM (uncurry (compileForeign hsc_env')) foreign_files

@@ -472,7 +472,7 @@ instance Outputable CafInfo where
 
 ppCafInfo :: CafInfo -> SDoc
 ppCafInfo NoCafRefs = text "NoCafRefs"
-ppCafInfo MayHaveCafRefs = empty
+ppCafInfo MayHaveCafRefs = text "MayHaveCafRefs"
 
 {-
 ************************************************************************

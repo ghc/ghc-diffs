@@ -447,6 +447,8 @@ Library
         StgLint
         StgSyn
         StgFVs
+        StgDeps
+        StgCafAnal
         CallArity
         DmdAnal
         Exitify

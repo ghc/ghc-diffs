@@ -1,4 +1,5 @@
-{-# LANGUAGE BangPatterns, CPP, MagicHash, NondecreasingIndentation #-}
+{-# LANGUAGE BangPatterns, CPP, MagicHash, NondecreasingIndentation,
+             LambdaCase #-}
 {-# OPTIONS_GHC -fprof-auto-top #-}
 
 -------------------------------------------------------------------------------
@@ -94,7 +95,7 @@ import CoreTidy         ( tidyExpr )
 import Type             ( Type )
 import {- Kind parts of -} Type         ( Kind )
 import CoreLint         ( lintInteractiveExpr )
-import VarEnv           ( emptyTidyEnv )
+import VarEnv           ( emptyTidyEnv, VarEnv )
 import Panic
 import ConLike
 import Control.Concurrent
@@ -122,8 +123,9 @@ import TidyPgm
 import CorePrep
 import CoreToStg        ( coreToStg )
 import qualified StgCmm ( codeGen )
-import StgSyn
+import StgSyn           ( StgTopBinding )
 import StgFVs           ( annTopBindingsFreeVars )
+import StgCafAnal       ( stgCafAnal )
 import CostCentre
 import ProfInit
 import TyCon
@@ -143,6 +145,10 @@ import TcEnv
 import PrelNames
 import Plugins
 import DynamicLoading   ( initializePlugins )
+import VarEnv           ( dVarEnvElts )
+import UniqDFM          ( alwaysUnsafeUfmToUdfm )
+import IdInfo           ( CafInfo (..) )
+import IfaceSyn
 
 import DynFlags
 import ErrUtils
@@ -763,7 +769,7 @@ finish summary tc_result mb_old_hash = do
             desugared_guts <- hscSimplify' plugins desugared_guts0
             (iface, no_change, details, cgguts) <-
               liftIO $ hscNormalIface hsc_env desugared_guts mb_old_hash
-            return (iface, no_change, details, HscRecomp cgguts summary)
+            return (iface, no_change, details, HscRecomp cgguts summary iface)
       else mk_simple_iface
   liftIO $ hscMaybeWriteIface dflags iface no_change summary
   return
@@ -1293,10 +1299,10 @@ hscWriteIface dflags iface no_change mod_summary = do
         writeIfaceFile dynDflags dynIfaceFile' iface
 
 -- | Compile to hard-code.
-hscGenHardCode :: HscEnv -> CgGuts -> ModSummary -> FilePath
+hscGenHardCode :: HscEnv -> CgGuts -> ModSummary -> ModIface -> FilePath
                -> IO (FilePath, Maybe FilePath, [(ForeignSrcLang, FilePath)])
                -- ^ @Just f@ <=> _stub.c is f
-hscGenHardCode hsc_env cgguts mod_summary output_filename = do
+hscGenHardCode hsc_env cgguts mod_summary mod_iface output_filename = do
         let CgGuts{ -- This is the last use of the ModGuts in a compilation.
                     -- From now on, we just use the bits we need.
                     cg_module   = this_mod,
@@ -1338,10 +1344,26 @@ hscGenHardCode hsc_env cgguts mod_summary output_filename = do
         withTiming (pure dflags)
                    (text "CodeGen"<+>brackets (ppr this_mod))
                    (const ()) $ do
-            cmms <- {-# SCC "StgCmm" #-}
+            (cmms, caf_infos) <- {-# SCC "StgCmm" #-}
                             doCodeGen hsc_env this_mod data_tycons
                                 cost_centre_info
                                 stg_binds hpc_info
+
+            ----------- Update iface with CafInfos ----------------
+
+            let mod_iface' = updateModIface mod_iface caf_infos
+            -- Overwrite the interface wile with CAF infos. Note that we can't
+            -- use hscWriteIface here: if we're generating code for Dyn way we
+            -- need to update the Dyn way iface file, otierwise the normal iface
+            -- file.
+            let ifaceFile = ml_hi_file (ms_location mod_summary)
+            if elem WayDyn (ways dflags)
+              then do
+                let dynIfaceFile = replaceExtension ifaceFile (dynHiSuf dflags)
+                    dynIfaceFile' = addBootSuffix_maybe (mi_boot mod_iface') dynIfaceFile
+                writeIfaceFile dflags dynIfaceFile' mod_iface'
+              else
+                writeIfaceFile dflags ifaceFile mod_iface'
 
             ------------------  Code output -----------------------
             rawcmms0 <- {-# SCC "cmmToRawCmm" #-}
@@ -1358,6 +1380,43 @@ hscGenHardCode hsc_env cgguts mod_summary output_filename = do
                   foreign_stubs foreign_files dependencies rawcmms1
             return (output_filename, stub_c_exists, foreign_fps)
 
+
+updateModIface :: ModIface -> VarEnv (Id, CafInfo) -> ModIface
+updateModIface mod_iface0 caf_infos0 =
+    -- Update CafInfos of ids in the ModIface. Note that some ids may not be in
+    -- the iface.
+    let
+      update_id_caf_info mod_iface id caf_info =
+        mod_iface{ mi_decls = update_decls id caf_info (mi_decls mod_iface) }
+
+      update_decls :: Var -> CafInfo -> [(Fingerprint, IfaceDecl)] -> [(Fingerprint, IfaceDecl)]
+
+      update_decls _ _ [] = []
+
+      update_decls var caf_info ((fp, IfaceId ifName ifType ifIdDetails ifIdInfo) : rest)
+        | ifName == idName var
+        = (fp, IfaceId ifName ifType ifIdDetails (update_if_id_info caf_info ifIdInfo)) : rest
+
+      update_decls var caf_info (e : rest)
+        = e : update_decls var caf_info rest
+
+      update_if_id_info :: CafInfo -> IfaceIdInfo -> IfaceIdInfo
+      update_if_id_info caf_info id_info =
+        case id_info of
+          NoInfo ->
+            case caf_info of
+              MayHaveCafRefs -> id_info
+              NoCafRefs -> HasInfo [HsNoCafRefs]
+          HasInfo infos0 ->
+            let
+              infos = filter (\case HsNoCafRefs -> False; _ -> True) infos0
+            in
+              HasInfo $ case caf_info of
+                MayHaveCafRefs -> infos
+                NoCafRefs -> HsNoCafRefs : infos
+    in
+      foldr (\(id, caf_info) mod_iface -> update_id_caf_info mod_iface id caf_info)
+            mod_iface0 (dVarEnvElts (alwaysUnsafeUfmToUdfm caf_infos0))
 
 hscInteractive :: HscEnv
                -> CgGuts
@@ -1419,7 +1478,7 @@ doCodeGen   :: HscEnv -> Module -> [TyCon]
             -> CollectedCCs
             -> [StgTopBinding]
             -> HpcInfo
-            -> IO (Stream IO CmmGroup ())
+            -> IO (Stream IO CmmGroup (), VarEnv (Id, CafInfo))
          -- Note we produce a 'Stream' of CmmGroups, so that the
          -- backend can be run incrementally.  Otherwise it generates all
          -- the C-- up front, which has a significant space cost.
@@ -1427,7 +1486,13 @@ doCodeGen hsc_env this_mod data_tycons
               cost_centre_info stg_binds hpc_info = do
     let dflags = hsc_dflags hsc_env
 
+    let caf_infos = stgCafAnal stg_binds
+
+    dumpIfSet_dyn dflags Opt_D_dump_stg "CAF analysis:" $
+      ppr (dVarEnvElts (alwaysUnsafeUfmToUdfm caf_infos))
+
     let stg_binds_w_fvs = annTopBindingsFreeVars stg_binds
+
     let cmm_stream :: Stream IO CmmGroup ()
         cmm_stream = {-# SCC "StgCmm" #-}
             StgCmm.codeGen dflags this_mod data_tycons
@@ -1475,7 +1540,7 @@ doCodeGen hsc_env this_mod data_tycons
 
         ppr_stream2 = Stream.mapM dump2 pipeline_stream
 
-    return ppr_stream2
+    return (ppr_stream2, caf_infos)
 
 
 

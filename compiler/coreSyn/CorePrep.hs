@@ -28,7 +28,6 @@ import CoreFVs
 import CoreMonad        ( CoreToDo(..) )
 import CoreLint         ( endPassIO )
 import CoreSyn
-import CoreSubst
 import MkCore hiding( FloatBind(..) )   -- We use our own FloatBind here
 import Type
 import Literal
@@ -53,14 +52,12 @@ import DynFlags
 import Util
 import Pair
 import Outputable
-import Platform
 import FastString
 import Config
 import Name             ( NamedThing(..), nameSrcSpan )
 import SrcLoc           ( SrcSpan(..), realSrcLocSpan, mkRealSrcLoc )
 import Data.Bits
 import MonadUtils       ( mapAccumLM )
-import Data.List        ( mapAccumL )
 import Control.Monad
 import CostCentre       ( CostCentre, ccFromThisModule )
 import qualified Data.Set as S
@@ -266,40 +263,6 @@ where x is demanded, in which case we want to finish with
         x* = f a
 And then x will actually end up case-bound
 
-Note [CafInfo and floating]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-What happens when we try to float bindings to the top level?  At this
-point all the CafInfo is supposed to be correct, and we must make certain
-that is true of the new top-level bindings.  There are two cases
-to consider
-
-a) The top-level binding is marked asCafRefs.  In that case we are
-   basically fine.  The floated bindings had better all be lazy lets,
-   so they can float to top level, but they'll all have HasCafRefs
-   (the default) which is safe.
-
-b) The top-level binding is marked NoCafRefs.  This really happens
-   Example.  CoreTidy produces
-      $fApplicativeSTM [NoCafRefs] = D:Alternative retry# ...blah...
-   Now CorePrep has to eta-expand to
-      $fApplicativeSTM = let sat = \xy. retry x y
-                         in D:Alternative sat ...blah...
-   So what we *want* is
-      sat [NoCafRefs] = \xy. retry x y
-      $fApplicativeSTM [NoCafRefs] = D:Alternative sat ...blah...
-
-   So, gruesomely, we must set the NoCafRefs flag on the sat bindings,
-   *and* substitute the modified 'sat' into the old RHS.
-
-   It should be the case that 'sat' is itself [NoCafRefs] (a value, no
-   cafs) else the original top-level binding would not itself have been
-   marked [NoCafRefs].  The DEBUG check in CoreToStg for
-   consistentCafInfo will find this.
-
-This is all very gruesome and horrible. It would be better to figure
-out CafInfo later, after CorePrep.  We'll do that in due course.
-Meanwhile this horrible hack works.
-
 Note [Join points and floating]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Join points can float out of other join points but not out of value bindings:
@@ -503,8 +466,6 @@ cpePair top_lvl is_rec dmd is_unlifted env bndr rhs
 
        ; return (floats4, rhs4) }
   where
-    platform = targetPlatform (cpe_dynFlags env)
-
     arity = idArity bndr        -- We must match this arity
 
     ---------------------
@@ -520,15 +481,9 @@ cpePair top_lvl is_rec dmd is_unlifted env bndr rhs
       | otherwise = dontFloat floats rhs
 
     ---------------------
-    float_top floats rhs        -- Urhgh!  See Note [CafInfo and floating]
-      | mayHaveCafRefs (idCafInfo bndr)
-      , allLazyTop floats
+    float_top floats rhs
+      | allLazyTop floats || canFloatTop floats
       = return (floats, rhs)
-
-      -- So the top-level binding is marked NoCafRefs
-      | Just (floats', rhs') <- canFloatFromNoCaf platform floats rhs
-      = return (floats', rhs')
-
       | otherwise
       = dontFloat floats rhs
 
@@ -1237,6 +1192,7 @@ data OkToSpec
    | IfUnboxedOk        -- A mixture of lazy lifted bindings and n
                         -- ok-to-speculate unlifted bindings
    | NotOkToSpec        -- Some not-ok-to-speculate unlifted bindings
+   deriving (Eq)
 
 mkFloat :: Demand -> Bool -> Id -> CpeRhs -> FloatingBind
 mkFloat dmd is_unlifted bndr rhs
@@ -1313,57 +1269,17 @@ deFloatTop (Floats _ floats)
 
 ---------------------------------------------------------------------------
 
-canFloatFromNoCaf :: Platform -> Floats -> CpeRhs -> Maybe (Floats, CpeRhs)
-       -- Note [CafInfo and floating]
-canFloatFromNoCaf platform (Floats ok_to_spec fs) rhs
-  | OkToSpec <- ok_to_spec           -- Worth trying
-  , Just (subst, fs') <- go (emptySubst, nilOL) (fromOL fs)
-  = Just (Floats OkToSpec fs', subst_expr subst rhs)
-  | otherwise
-  = Nothing
+canFloatTop :: Floats -> Bool
+canFloatTop (Floats ok_to_spec fs)
+  = ASSERT(ok_to_spec /= OkToSpec)
+      -- checked by the previous condition in float_top
+    not (any is_float_case fs)
+      -- can't float case to top-level
+      -- TODO (osa): Shouldn't we float everything else though?
   where
-    subst_expr = substExpr (text "CorePrep")
-
-    go :: (Subst, OrdList FloatingBind) -> [FloatingBind]
-       -> Maybe (Subst, OrdList FloatingBind)
-
-    go (subst, fbs_out) [] = Just (subst, fbs_out)
-
-    go (subst, fbs_out) (FloatLet (NonRec b r) : fbs_in)
-      | rhs_ok r
-      = go (subst', fbs_out `snocOL` new_fb) fbs_in
-      where
-        (subst', b') = set_nocaf_bndr subst b
-        new_fb = FloatLet (NonRec b' (subst_expr subst r))
-
-    go (subst, fbs_out) (FloatLet (Rec prs) : fbs_in)
-      | all rhs_ok rs
-      = go (subst', fbs_out `snocOL` new_fb) fbs_in
-      where
-        (bs,rs) = unzip prs
-        (subst', bs') = mapAccumL set_nocaf_bndr subst bs
-        rs' = map (subst_expr subst') rs
-        new_fb = FloatLet (Rec (bs' `zip` rs'))
-
-    go (subst, fbs_out) (ft@FloatTick{} : fbs_in)
-      = go (subst, fbs_out `snocOL` ft) fbs_in
-
-    go _ _ = Nothing      -- Encountered a caffy binding
-
-    ------------
-    set_nocaf_bndr subst bndr
-      = (extendIdSubst subst bndr (Var bndr'), bndr')
-      where
-        bndr' = bndr `setIdCafInfo` NoCafRefs
-
-    ------------
-    rhs_ok :: CoreExpr -> Bool
-    -- We can only float to top level from a NoCaf thing if
-    -- the new binding is static. However it can't mention
-    -- any non-static things or it would *already* be Caffy
-    rhs_ok = rhsIsStatic platform (\_ -> False)
-                         (\_nt i -> pprPanic "rhsIsStatic" (integer i))
-                         -- Integer or Natural literals should not show up
+    is_float_case :: FloatingBind -> Bool
+    is_float_case FloatCase{} = True
+    is_float_case _ = False
 
 wantFloatNested :: RecFlag -> Demand -> Bool -> Floats -> CpeRhs -> Bool
 wantFloatNested is_rec dmd is_unlifted floats rhs

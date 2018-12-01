@@ -1,4 +1,12 @@
 -- | Free variable analysis on STG terms.
+--
+-- Note that we only care about free variables of closures, and definition of
+-- "free variable" in this context is a bit different: we don't consider
+-- top-level ids as free (imported or not). Only the bindings local to the
+-- top-level closure we're visiting can be free in a closure nested in the
+-- top-level closure. This also means that top-level closures don't have free
+-- variables, only nested closures do.
+--
 module StgFVs (
     annTopBindingsFreeVars,
     annBindingFreeVars
