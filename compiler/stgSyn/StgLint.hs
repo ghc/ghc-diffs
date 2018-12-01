@@ -32,6 +32,8 @@ Since then there were some attempts at enabling it again, as summarised in
 basic properties listed above.
 -}
 
+{-# LANGUAGE ScopedTypeVariables, FlexibleContexts #-}
+
 module StgLint ( lintStgTopBindings ) where
 
 import GhcPrelude
@@ -42,29 +44,32 @@ import DynFlags
 import Bag              ( Bag, emptyBag, isEmptyBag, snocBag, bagToList )
 import BasicTypes       ( TopLevelFlag(..), isTopLevel )
 import CostCentre       ( isCurrentCCS )
-import Id               ( Id, idType, isLocalId, isJoinId )
+import Id               ( Id, idType, isJoinId, idName )
 import VarSet
 import DataCon
 import CoreSyn          ( AltCon(..) )
-import Name             ( getSrcLoc )
+import Name             ( getSrcLoc, nameIsLocalOrFrom )
 import ErrUtils         ( MsgDoc, Severity(..), mkLocMessage )
 import Type
 import RepType
 import SrcLoc
 import Outputable
+import Module           ( Module )
 import qualified ErrUtils as Err
 import Control.Applicative ((<|>))
 import Control.Monad
 
-lintStgTopBindings :: DynFlags
+lintStgTopBindings :: forall a . Outputable (XRhsClosure a)
+                   => DynFlags
+                   -> Module -- ^ module being compiled
                    -> Bool   -- ^ have we run Unarise yet?
                    -> String -- ^ who produced the STG?
-                   -> [StgTopBinding]
+                   -> [GenStgTopBinding a]
                    -> IO ()
 
-lintStgTopBindings dflags unarised whodunnit binds
+lintStgTopBindings dflags this_mod unarised whodunnit binds
   = {-# SCC "StgLint" #-}
-    case initL unarised (lint_binds binds) of
+    case initL this_mod unarised (lint_binds binds) of
       Nothing  ->
         return ()
       Just msg -> do
@@ -74,11 +79,11 @@ lintStgTopBindings dflags unarised whodunnit binds
                         text whodunnit <+> text "***",
                   msg,
                   text "*** Offending Program ***",
-                  pprStgTopBindings binds,
+                  pprGenStgTopBindings binds,
                   text "*** End of Offense ***"])
         Err.ghcExit dflags 1
   where
-    lint_binds :: [StgTopBinding] -> LintM ()
+    lint_binds :: [GenStgTopBinding a] -> LintM ()
 
     lint_binds [] = return ()
     lint_binds (bind:binds) = do
@@ -96,7 +101,9 @@ lintStgArg (StgVarArg v) = lintStgVar v
 lintStgVar :: Id -> LintM ()
 lintStgVar id = checkInScope id
 
-lintStgBinds :: TopLevelFlag -> StgBinding -> LintM [Id] -- Returns the binders
+lintStgBinds
+    :: Outputable (XRhsClosure a)
+    => GenStgBinding a -> LintM [Id] -- Returns the binders
 lintStgBinds top_lvl (StgNonRec binder rhs) = do
     lint_binds_help top_lvl (binder,rhs)
     return [binder]
@@ -108,7 +115,11 @@ lintStgBinds top_lvl (StgRec pairs)
   where
     binders = [b | (b,_) <- pairs]
 
-lint_binds_help :: TopLevelFlag -> (Id, StgRhs) -> LintM ()
+lint_binds_help
+    :: Outputable (XRhsClosure a)
+    => TopLevelFlag
+    -> (Id, GenStgRhs a)
+    -> LintM ()
 lint_binds_help top_lvl (binder, rhs)
   = addLoc (RhsOf binder) $ do
         when (isTopLevel top_lvl) (checkNoCurrentCCS rhs)
@@ -129,7 +140,7 @@ checkNoCurrentCCS (StgRhsCon ccs _ _)
 checkNoCurrentCCS _
   = return ()
 
-lintStgRhs :: StgRhs -> LintM ()
+lintStgRhs :: Outputable (XRhsClosure a) => GenStgRhs a -> LintM ()
 
 lintStgRhs (StgRhsClosure _ _ _ [] expr)
   = lintStgExpr expr
@@ -146,7 +157,7 @@ lintStgRhs rhs@(StgRhsCon _ con args) = do
     mapM_ lintStgArg args
     mapM_ checkPostUnariseConArg args
 
-lintStgExpr :: StgExpr -> LintM ()
+lintStgExpr :: Outputable (XRhsClosure a) => GenStgExpr a -> LintM ()
 
 lintStgExpr (StgLit _) = return ()
 
@@ -191,7 +202,9 @@ lintStgExpr (StgCase scrut bndr alts_type alts) = do
 
     addInScopeVars [bndr | in_scope] (mapM_ lintAlt alts)
 
-lintAlt :: (AltCon, [Id], StgExpr) -> LintM ()
+lintAlt
+    :: Outputable (XRhsClosure a)
+    => (AltCon, [Id], GenStgExpr a) -> LintM ()
 
 lintAlt (DEFAULT, _, rhs) =
     lintStgExpr rhs
@@ -212,9 +225,10 @@ lintAlt (DataAlt _, bndrs, rhs) = do
 -}
 
 newtype LintM a = LintM
-    { unLintM :: LintFlags
-              -> [LintLocInfo]      -- Locations
-              -> IdSet              -- Local vars in scope
+    { unLintM :: Module
+              -> LintFlags
+              -> [LintLocInfo]     -- Locations
+              -> IdSet             -- Local vars in scope
               -> Bag MsgDoc        -- Error messages so far
               -> (a, Bag MsgDoc)   -- Result and error messages (if any)
     }
@@ -245,9 +259,9 @@ pp_binders bs
     pp_binder b
       = hsep [ppr b, dcolon, ppr (idType b)]
 
-initL :: Bool -> LintM a -> Maybe MsgDoc
-initL unarised (LintM m)
-  = case (m lf [] emptyVarSet emptyBag) of { (_, errs) ->
+initL :: Module -> Bool -> LintM a -> Maybe MsgDoc
+initL this_mod unarised (LintM m)
+  = case (m this_mod lf [] emptyVarSet emptyBag) of { (_, errs) ->
     if isEmptyBag errs then
         Nothing
     else
@@ -260,7 +274,7 @@ instance Functor LintM where
       fmap = liftM
 
 instance Applicative LintM where
-      pure a = LintM $ \_lf _loc _scope errs -> (a, errs)
+      pure a = LintM $ \_mod _lf _loc _scope errs -> (a, errs)
       (<*>) = ap
       (*>)  = thenL_
 
@@ -269,14 +283,14 @@ instance Monad LintM where
     (>>)  = (*>)
 
 thenL :: LintM a -> (a -> LintM b) -> LintM b
-thenL m k = LintM $ \lf loc scope errs
-  -> case unLintM m lf loc scope errs of
-      (r, errs') -> unLintM (k r) lf loc scope errs'
+thenL m k = LintM $ \mod lf loc scope errs
+  -> case unLintM m mod lf loc scope errs of
+      (r, errs') -> unLintM (k r) mod lf loc scope errs'
 
 thenL_ :: LintM a -> LintM b -> LintM b
-thenL_ m k = LintM $ \lf loc scope errs
-  -> case unLintM m lf loc scope errs of
-      (_, errs') -> unLintM k lf loc scope errs'
+thenL_ m k = LintM $ \mod lf loc scope errs
+  -> case unLintM m mod lf loc scope errs of
+      (_, errs') -> unLintM k mod lf loc scope errs'
 
 checkL :: Bool -> MsgDoc -> LintM ()
 checkL True  _   = return ()
@@ -321,7 +335,7 @@ checkPostUnariseId id =
       is_sum <|> is_tuple <|> is_void
 
 addErrL :: MsgDoc -> LintM ()
-addErrL msg = LintM $ \_lf loc _scope errs -> ((), addErr errs msg loc)
+addErrL msg = LintM $ \_mod _lf loc _scope errs -> ((), addErr errs msg loc)
 
 addErr :: Bag MsgDoc -> MsgDoc -> [LintLocInfo] -> Bag MsgDoc
 addErr errs_so_far msg locs
@@ -332,27 +346,27 @@ addErr errs_so_far msg locs
     mk_msg []      = msg
 
 addLoc :: LintLocInfo -> LintM a -> LintM a
-addLoc extra_loc m = LintM $ \lf loc scope errs
-   -> unLintM m lf (extra_loc:loc) scope errs
+addLoc extra_loc m = LintM $ \mod lf loc scope errs
+   -> unLintM m mod lf (extra_loc:loc) scope errs
 
 addInScopeVars :: [Id] -> LintM a -> LintM a
-addInScopeVars ids m = LintM $ \lf loc scope errs
+addInScopeVars ids m = LintM $ \mod lf loc scope errs
  -> let
         new_set = mkVarSet ids
-    in unLintM m lf loc (scope `unionVarSet` new_set) errs
+    in unLintM m mod lf loc (scope `unionVarSet` new_set) errs
 
 getLintFlags :: LintM LintFlags
-getLintFlags = LintM $ \lf _loc _scope errs -> (lf, errs)
+getLintFlags = LintM $ \_mod lf _loc _scope errs -> (lf, errs)
 
 checkInScope :: Id -> LintM ()
-checkInScope id = LintM $ \_lf loc scope errs
- -> if isLocalId id && not (id `elemVarSet` scope) then
+checkInScope id = LintM $ \mod _lf loc scope errs
+ -> if nameIsLocalOrFrom mod (idName id) && not (id `elemVarSet` scope) then
         ((), addErr errs (hsep [ppr id, dcolon, ppr (idType id),
                                 text "is out of scope"]) loc)
     else
         ((), errs)
 
-mkUnliftedTyMsg :: Id -> StgRhs -> SDoc
+mkUnliftedTyMsg :: Outputable (XRhsClosure a) => Id -> GenStgRhs a -> SDoc
 mkUnliftedTyMsg binder rhs
   = (text "Let(rec) binder" <+> quotes (ppr binder) <+>
      text "has unlifted type" <+> quotes (ppr (idType binder)))

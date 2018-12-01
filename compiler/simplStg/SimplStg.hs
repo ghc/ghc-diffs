@@ -6,6 +6,7 @@
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module SimplStg ( stg2stg ) where
 
@@ -20,6 +21,7 @@ import StgStats         ( showStgStats )
 import UnariseStg       ( unarise )
 import StgCse           ( stgCse )
 import StgLiftLams      ( stgLiftLams )
+import Module           ( Module )
 
 import DynFlags
 import ErrUtils
@@ -40,10 +42,11 @@ runStgM :: UniqSupply -> StgM a -> IO a
 runStgM us (StgM m) = evalStateT m us
 
 stg2stg :: DynFlags                  -- includes spec of what stg-to-stg passes to do
-        -> [StgTopBinding]           -- input...
+        -> Module                    -- module being compiled
+        -> [StgTopBinding]           -- input program
         -> IO [StgTopBinding]        -- output program
 
-stg2stg dflags binds
+stg2stg dflags this_mod binds
   = do  { showPass dflags "Stg2Stg"
         ; us <- mkSplitUniqSupply 'g'
 
@@ -58,8 +61,10 @@ stg2stg dflags binds
 
   where
     stg_linter what
-      | gopt Opt_DoStgLinting dflags = lintStgTopBindings dflags what
-      | otherwise                    = \ _whodunnit _binds -> return ()
+      | gopt Opt_DoStgLinting dflags
+      = lintStgTopBindings dflags this_mod what
+      | otherwise
+      = \ _whodunnit _binds -> return ()
 
     -------------------------------------------
     do_stg_pass :: [StgTopBinding] -> StgToDo -> StgM [StgTopBinding]
