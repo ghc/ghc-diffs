@@ -26,6 +26,7 @@ module StgSyn (
 
         StgPass(..), BinderP, XRhsClosure, XLet, XLetNoEscape,
         NoExtSilent, noExtSilent,
+        OutputablePass,
 
         UpdateFlag(..), isUpdatable,
 
@@ -732,7 +733,7 @@ pprGenStgBinding (StgRec pairs)
              4 (ppr expr <> semi)
 
 pprGenStgTopBindings
-  :: (Outputable (XRhsClosure pass)) => [GenStgTopBinding pass] -> SDoc
+  :: (OutputablePass pass) => [GenStgTopBinding pass] -> SDoc
 pprGenStgTopBindings binds
   = vcat $ intersperse blankLine (map pprGenStgTopBinding binds)
 

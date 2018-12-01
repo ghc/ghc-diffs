@@ -32,7 +32,7 @@ Since then there were some attempts at enabling it again, as summarised in
 basic properties listed above.
 -}
 
-{-# LANGUAGE ScopedTypeVariables, FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables, FlexibleContexts, TypeFamilies #-}
 
 module StgLint ( lintStgTopBindings ) where
 
@@ -59,7 +59,7 @@ import qualified ErrUtils as Err
 import Control.Applicative ((<|>))
 import Control.Monad
 
-lintStgTopBindings :: forall a . Outputable (XRhsClosure a)
+lintStgTopBindings :: forall a . (OutputablePass a, BinderP a ~ Id)
                    => DynFlags
                    -> Module -- ^ module being compiled
                    -> Bool   -- ^ have we run Unarise yet?
@@ -102,8 +102,8 @@ lintStgVar :: Id -> LintM ()
 lintStgVar id = checkInScope id
 
 lintStgBinds
-    :: Outputable (XRhsClosure a)
-    => GenStgBinding a -> LintM [Id] -- Returns the binders
+    :: (OutputablePass a, BinderP a ~ Id)
+    => TopLevelFlag -> GenStgBinding a -> LintM [Id] -- Returns the binders
 lintStgBinds top_lvl (StgNonRec binder rhs) = do
     lint_binds_help top_lvl (binder,rhs)
     return [binder]
@@ -116,7 +116,7 @@ lintStgBinds top_lvl (StgRec pairs)
     binders = [b | (b,_) <- pairs]
 
 lint_binds_help
-    :: Outputable (XRhsClosure a)
+    :: (OutputablePass a, BinderP a ~ Id)
     => TopLevelFlag
     -> (Id, GenStgRhs a)
     -> LintM ()
@@ -130,17 +130,20 @@ lint_binds_help top_lvl (binder, rhs)
 
 -- | Top-level bindings can't inherit the cost centre stack from their
 -- (static) allocation site.
-checkNoCurrentCCS :: StgRhs -> LintM ()
-checkNoCurrentCCS (StgRhsClosure _ ccs _ _ _)
+checkNoCurrentCCS
+    :: (OutputablePass a, BinderP a ~ Id)
+    => GenStgRhs a
+    -> LintM ()
+checkNoCurrentCCS rhs@(StgRhsClosure _ ccs _ _ _)
   | isCurrentCCS ccs
-  = addErrL (text "Top-level StgRhsClosure with CurrentCCS")
-checkNoCurrentCCS (StgRhsCon ccs _ _)
+  = addErrL (text "Top-level StgRhsClosure with CurrentCCS" $$ ppr rhs)
+checkNoCurrentCCS rhs@(StgRhsCon ccs _ _)
   | isCurrentCCS ccs
-  = addErrL (text "Top-level StgRhsCon with CurrentCCS")
+  = addErrL (text "Top-level StgRhsCon with CurrentCCS" $$ ppr rhs)
 checkNoCurrentCCS _
   = return ()
 
-lintStgRhs :: Outputable (XRhsClosure a) => GenStgRhs a -> LintM ()
+lintStgRhs :: (OutputablePass a, BinderP a ~ Id) => GenStgRhs a -> LintM ()
 
 lintStgRhs (StgRhsClosure _ _ _ [] expr)
   = lintStgExpr expr
@@ -157,7 +160,7 @@ lintStgRhs rhs@(StgRhsCon _ con args) = do
     mapM_ lintStgArg args
     mapM_ checkPostUnariseConArg args
 
-lintStgExpr :: Outputable (XRhsClosure a) => GenStgExpr a -> LintM ()
+lintStgExpr :: (OutputablePass a, BinderP a ~ Id) => GenStgExpr a -> LintM ()
 
 lintStgExpr (StgLit _) = return ()
 
@@ -203,7 +206,7 @@ lintStgExpr (StgCase scrut bndr alts_type alts) = do
     addInScopeVars [bndr | in_scope] (mapM_ lintAlt alts)
 
 lintAlt
-    :: Outputable (XRhsClosure a)
+    :: (OutputablePass a, BinderP a ~ Id)
     => (AltCon, [Id], GenStgExpr a) -> LintM ()
 
 lintAlt (DEFAULT, _, rhs) =
@@ -366,7 +369,7 @@ checkInScope id = LintM $ \mod _lf loc scope errs
     else
         ((), errs)
 
-mkUnliftedTyMsg :: Outputable (XRhsClosure a) => Id -> GenStgRhs a -> SDoc
+mkUnliftedTyMsg :: OutputablePass a => Id -> GenStgRhs a -> SDoc
 mkUnliftedTyMsg binder rhs
   = (text "Let(rec) binder" <+> quotes (ppr binder) <+>
      text "has unlifted type" <+> quotes (ppr (idType binder)))
