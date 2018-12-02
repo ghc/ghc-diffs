@@ -483,19 +483,20 @@ aliasify :: LMGlobal -> LlvmM [LMGlobal]
 -- Here we obtain the indirectee's precise type and introduce
 -- fresh aliases to both the precise typed label (lbl$def) and the i8*
 -- typed (regular) label of it with the matching new names.
-aliasify (LMGlobal indirectee@(LMGlobalVar _ _ _ _ _ Alias) (Just orig)) = do
-    let LMGlobalVar lbl ty@LMAlias{} link sect align Alias = indirectee
-        defLbl = llvmDefLabel lbl
-        LMStaticPointer (LMGlobalVar label' _ link' Nothing Nothing Alias) = orig
-        defOrigLbl = llvmDefLabel label'
-        orig' = LMStaticPointer (LMGlobalVar label' i8Ptr link' Nothing Nothing Alias)
-    origType <- funLookup label'
+aliasify (LMGlobal (LMGlobalVar lbl ty@LMAlias{} link sect align Alias)
+                   (Just orig)) = do
+    let defLbl = llvmDefLabel lbl
+        LMStaticPointer (LMGlobalVar origLbl _ oLnk Nothing Nothing Alias) = orig
+        defOrigLbl = llvmDefLabel origLbl
+        orig' = LMStaticPointer (LMGlobalVar origLbl i8Ptr oLnk Nothing Nothing Alias)
+    origType <- funLookup origLbl
     let defOrig = LMBitc (LMStaticPointer (LMGlobalVar defOrigLbl
-                                           (pLift $ fromJust origType) link'
+                                           (pLift $ fromJust origType) oLnk
                                            Nothing Nothing Alias))
                          (pLift ty)
     pure [ LMGlobal (LMGlobalVar defLbl ty link sect align Alias) (Just defOrig)
-         , LMGlobal (LMGlobalVar lbl i8Ptr link sect align Alias) (Just orig')]
+         , LMGlobal (LMGlobalVar lbl i8Ptr link sect align Alias) (Just orig')
+         ]
 aliasify (LMGlobal var val) = do
     let LMGlobalVar lbl ty link sect align const = var
 
