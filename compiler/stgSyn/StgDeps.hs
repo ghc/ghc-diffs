@@ -13,11 +13,9 @@ import Name (Name, nameIsLocalOrFrom)
 import NameEnv (depAnal)
 import Outputable
 import StgSyn
-import Util
 import Var
 import VarSet
 
-import Data.Bifunctor (second)
 import Data.Graph (SCC (..))
 
 -- | Set of bound variables
@@ -58,7 +56,7 @@ annTopBindingsDeps mod bs = zip bs (map top_bind bs)
     rhs bounds (StgRhsClosure _ _ _ as e) =
       expr (extendDVarSetList bounds as) e
 
-    rhs bounds (StgRhsCon ccs con as) =
+    rhs bounds (StgRhsCon _ _ as) =
       args bounds as
 
     var :: BVS -> Var -> FVS

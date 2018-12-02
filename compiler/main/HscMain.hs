@@ -125,6 +125,7 @@ import qualified StgCmm ( codeGen )
 import StgSyn           ( StgTopBinding, pprGenStgTopBindings )
 import StgFVs           ( annTopBindingsFreeVars )
 import StgDeps          ( annTopBindingsDeps, depSortStgBinds )
+import StgCafAnal       ( stgCafAnal )
 import CostCentre
 import ProfInit
 import TyCon
@@ -1434,9 +1435,12 @@ doCodeGen hsc_env this_mod data_tycons
 
     let stg_binds_w_deps = annTopBindingsDeps this_mod stg_binds
     let stg_binds_dep_sorted = depSortStgBinds stg_binds_w_deps
+    let caf_anal = stgCafAnal stg_binds_dep_sorted
 
     dumpIfSet_dyn dflags Opt_D_dump_stg "Before codegen (dep sorted):" $
       pprGenStgTopBindings (map fst stg_binds_dep_sorted)
+
+    pprTraceM "doCodeGen" (text "caf anal:" $$ ppr caf_anal)
 
     let cmm_stream :: Stream IO CmmGroup ()
         cmm_stream = {-# SCC "StgCmm" #-}
