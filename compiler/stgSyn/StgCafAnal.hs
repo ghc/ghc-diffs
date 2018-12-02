@@ -26,13 +26,14 @@ stgCafAnal = foldr f emptyVarEnv
 -- Ids that the binding binds.
 cafAnalTopBinding :: VarEnv CafInfo -> (StgTopBinding, FVS) -> VarEnv CafInfo
 
-cafAnalTopBinding _ (StgTopStringLit{}, _) = emptyVarEnv
+cafAnalTopBinding _ (StgTopStringLit bndr _, _)
+  = unitVarEnv bndr NoCafRefs
 
 cafAnalTopBinding env (StgTopLifted (StgNonRec bndr rhs), fvs)
   = unitVarEnv bndr caf_info
   where
     caf_info
-      | fvsHaveCafRefs env fvs || topRhsHasCafRefs rhs
+      | fvsHaveCafRefs env fvs || rhsIsCaf rhs
       = MayHaveCafRefs
       | otherwise
       = NoCafRefs
@@ -41,10 +42,14 @@ cafAnalTopBinding env (StgTopLifted bndrs_@(StgRec bndrs), fvs)
   = mkVarEnv (map (, caf_info) (bindersOf bndrs_))
   where
     caf_info
-      | fvsHaveCafRefs env fvs || any (topRhsHasCafRefs . snd) bndrs
+      | fvsHaveCafRefs env fvs || any (rhsIsCaf . snd) bndrs
       = MayHaveCafRefs
       | otherwise
       = NoCafRefs
+
+rhsIsCaf :: StgRhs -> Bool
+rhsIsCaf (StgRhsClosure _ _ upd args _) = null args && isUpdatable upd
+rhsIsCaf StgRhsCon{} = True
 
 fvsHaveCafRefs :: VarEnv CafInfo -> FVS -> Bool
 fvsHaveCafRefs env fvs = any (fvHasCafRefs env) (dVarSetElems fvs)

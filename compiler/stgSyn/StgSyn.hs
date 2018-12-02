@@ -48,7 +48,7 @@ module StgSyn (
 
         -- utils
         bindersOfTop, bindersOf, bindersOfTopBinds, bindersOfBinds,
-        topStgBindHasCafRefs, stgArgHasCafRefs, stgRhsArity, topRhsHasCafRefs,
+        topStgBindHasCafRefs, stgArgHasCafRefs, stgRhsArity,
         isDllConApp,
         stgArgType,
         stripStgTicksTop,
