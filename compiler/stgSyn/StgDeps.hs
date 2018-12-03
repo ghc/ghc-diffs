@@ -8,7 +8,7 @@ module StgDeps
 import GhcPrelude
 
 import Id (idName)
-import Name (Name, nameIsLocalOrFrom)
+import Name (Name)
 import NameEnv (depAnal)
 import Outputable
 import StgSyn

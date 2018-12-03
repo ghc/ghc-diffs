@@ -1,5 +1,3 @@
-{-# LANGUAGE TupleSections #-}
-
 module StgCafAnal (stgCafAnal) where
 
 import GhcPrelude
