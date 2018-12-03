@@ -47,9 +47,13 @@ cafAnalTopBinding env (StgTopLifted bndrs_@(StgRec bndrs), fvs)
       | otherwise
       = NoCafRefs
 
+-- Only called on top-level RHSs
 rhsIsCaf :: StgRhs -> Bool
 rhsIsCaf (StgRhsClosure _ _ upd args _) = null args && isUpdatable upd
-rhsIsCaf StgRhsCon{} = True
+-- Note that all variable arguments of should be recorded as a free variable, so
+-- we don't need to consider this case, `fvsHaveCafRefs` check already checks
+-- these arguments.
+rhsIsCaf StgRhsCon{} = False
 
 fvsHaveCafRefs :: VarEnv CafInfo -> FVS -> Bool
 fvsHaveCafRefs env fvs = any (fvHasCafRefs env) (dVarSetElems fvs)
