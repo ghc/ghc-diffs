@@ -1463,7 +1463,7 @@ doCodeGen hsc_env this_mod data_tycons
             | caf_info == idCafInfo bndr
              -> return ()
             | otherwise
-             -> pprPanic "binder caf info is different from analysis result" $
+             -> pprTraceM "binder caf info is different from analysis result" $
                   ppr bndr <+> text "id info:" <+> ppr (idCafInfo bndr) <+>
                   text "analysis:" <+> ppr caf_info
 
