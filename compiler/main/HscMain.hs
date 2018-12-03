@@ -145,7 +145,8 @@ import TcEnv
 import PrelNames
 import Plugins
 import DynamicLoading   ( initializePlugins )
-import VarEnv           ( lookupVarEnv )
+import VarEnv           ( lookupVarEnv, dVarEnvElts )
+import UniqDFM          ( alwaysUnsafeUfmToUdfm )
 
 import DynFlags
 import ErrUtils
@@ -1434,14 +1435,18 @@ doCodeGen hsc_env this_mod data_tycons
     dumpIfSet_dyn dflags Opt_D_dump_stg "Before codegen:" $
       pprGenStgTopBindings stg_binds_w_fvs
 
-    let stg_binds_w_deps = annTopBindingsDeps this_mod stg_binds
+    let stg_binds_w_deps = annTopBindingsDeps stg_binds
     let stg_binds_dep_sorted = depSortStgBinds stg_binds_w_deps
     let caf_infos = stgCafAnal stg_binds_dep_sorted
 
-    dumpIfSet_dyn dflags Opt_D_dump_stg "Before codegen (dep sorted):" $
-      pprGenStgTopBindings (map fst stg_binds_dep_sorted)
+    -- dumpIfSet_dyn dflags Opt_D_dump_stg "Before codegen (dep sorted):" $
+    --   pprGenStgTopBindings (map fst stg_binds_dep_sorted)
 
-    dumpIfSet_dyn dflags Opt_D_dump_stg "CAF analysis:" (ppr caf_infos)
+    dumpIfSet_dyn dflags Opt_D_dump_stg "Free variables:" $
+      ppr stg_binds_dep_sorted
+
+    dumpIfSet_dyn dflags Opt_D_dump_stg "CAF analysis:"
+      (ppr (dVarEnvElts (alwaysUnsafeUfmToUdfm caf_infos)))
 
     -- Sanity check: the CafInfo we compute here should be the same with
     -- CafInfo computed in Core (TODO: actually I think we're being more
@@ -1454,7 +1459,7 @@ doCodeGen hsc_env this_mod data_tycons
         case lookupVarEnv caf_infos bndr of
           Nothing ->
             pprPanic "binder not in caf_infos" (ppr bndr)
-          Just caf_info
+          Just (_, caf_info)
             | caf_info == idCafInfo bndr
              -> return ()
             | otherwise

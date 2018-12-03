@@ -8,7 +8,6 @@ module StgDeps
 import GhcPrelude
 
 import Id (idName)
-import Module (Module)
 import Name (Name, nameIsLocalOrFrom)
 import NameEnv (depAnal)
 import Outputable
@@ -24,11 +23,10 @@ type BVS = DVarSet
 -- | Set of free variables
 type FVS = DVarSet
 
--- | Annotate top-level STG bindings with dependencies in this module.
--- Dependencies are free variables in a binding, but we only consider
--- dependencies in the current module.
-annTopBindingsDeps :: Module -> [StgTopBinding] -> [(StgTopBinding, FVS)]
-annTopBindingsDeps mod bs = zip bs (map top_bind bs)
+-- | Annotate top-level STG bindings with dependencies. Dependencies are free
+-- variables in a binding. Note that this includes imported variables too.
+annTopBindingsDeps :: [StgTopBinding] -> [(StgTopBinding, FVS)]
+annTopBindingsDeps bs = zip bs (map top_bind bs)
   where
     top_bind :: StgTopBinding -> FVS
 
@@ -61,7 +59,7 @@ annTopBindingsDeps mod bs = zip bs (map top_bind bs)
 
     var :: BVS -> Var -> FVS
     var bounds v
-      | nameIsLocalOrFrom mod (idName v) && not (elemDVarSet v bounds)
+      | not (elemDVarSet v bounds)
       = unitDVarSet v
       | otherwise
       = emptyDVarSet
