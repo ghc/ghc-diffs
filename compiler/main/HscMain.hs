@@ -123,7 +123,7 @@ import TidyPgm
 import CorePrep
 import CoreToStg        ( coreToStg )
 import qualified StgCmm ( codeGen )
-import StgSyn           ( StgTopBinding, pprGenStgTopBindings, bindersOfTop )
+import StgSyn           ( StgTopBinding, pprGenStgTopBindings )
 import StgFVs           ( annTopBindingsFreeVars )
 import StgDeps          ( annTopBindingsDeps, depSortStgBinds )
 import StgCafAnal       ( stgCafAnal )
@@ -146,7 +146,7 @@ import TcEnv
 import PrelNames
 import Plugins
 import DynamicLoading   ( initializePlugins )
-import VarEnv           ( lookupVarEnv, dVarEnvElts )
+import VarEnv           ( dVarEnvElts )
 import UniqDFM          ( alwaysUnsafeUfmToUdfm )
 import IdInfo           ( CafInfo (..) )
 import IfaceSyn
@@ -1492,25 +1492,6 @@ doCodeGen hsc_env this_mod data_tycons
 
     dumpIfSet_dyn dflags Opt_D_dump_stg "CAF analysis:"
       (ppr (dVarEnvElts (alwaysUnsafeUfmToUdfm caf_infos)))
-
-    -- Sanity check: the CafInfo we compute here should be the same with
-    -- CafInfo computed in Core (TODO: actually I think we're being more
-    -- accurate here, in Core we have to be conservative -- but currently
-    -- implementing a strict case until I understand how and why we're more
-    -- conservative in Core)
-    forM_ stg_binds $ \top_bind -> do
-      let bndrs = bindersOfTop top_bind
-      forM_ bndrs $ \bndr ->
-        case lookupVarEnv caf_infos bndr of
-          Nothing ->
-            pprPanic "binder not in caf_infos" (ppr bndr)
-          Just (_, caf_info)
-            | caf_info == idCafInfo bndr
-             -> return ()
-            | otherwise
-             -> pprTraceM "binder caf info is different from analysis result" $
-                  ppr bndr <+> text "id info:" <+> ppr (idCafInfo bndr) <+>
-                  text "analysis:" <+> ppr caf_info
 
     let cmm_stream :: Stream IO CmmGroup ()
         cmm_stream = {-# SCC "StgCmm" #-}

@@ -33,8 +33,7 @@ import DataCon
 import CostCentre
 import VarEnv
 import Module
-import Name             ( isExternalName, nameOccName, nameModule_maybe )
-import OccName          ( occNameFS )
+import Name             ( isExternalName, nameModule_maybe )
 import BasicTypes       ( Arity )
 import TysWiredIn       ( unboxedUnitDataCon, unitDataConId )
 import Literal

@@ -28,7 +28,6 @@ import CoreFVs
 import CoreMonad        ( CoreToDo(..) )
 import CoreLint         ( endPassIO )
 import CoreSyn
-import CoreSubst
 import MkCore hiding( FloatBind(..) )   -- We use our own FloatBind here
 import Type
 import Literal
@@ -53,14 +52,12 @@ import DynFlags
 import Util
 import Pair
 import Outputable
-import Platform
 import FastString
 import Config
 import Name             ( NamedThing(..), nameSrcSpan )
 import SrcLoc           ( SrcSpan(..), realSrcLocSpan, mkRealSrcLoc )
 import Data.Bits
 import MonadUtils       ( mapAccumLM )
-import Data.List        ( mapAccumL )
 import Control.Monad
 import CostCentre       ( CostCentre, ccFromThisModule )
 import qualified Data.Set as S
@@ -469,14 +466,12 @@ cpePair top_lvl is_rec dmd is_unlifted env bndr rhs
 
        ; return (floats4, rhs4) }
   where
-    platform = targetPlatform (cpe_dynFlags env)
-
     arity = idArity bndr        -- We must match this arity
 
     ---------------------
     float_from_rhs floats rhs
       | isEmptyFloats floats = return (emptyFloats, rhs)
-      | isTopLevel top_lvl   = return (floats, rhs)
+      | isTopLevel top_lvl   = float_top    floats rhs
       | otherwise            = float_nested floats rhs
 
     ---------------------
@@ -484,6 +479,13 @@ cpePair top_lvl is_rec dmd is_unlifted env bndr rhs
       | wantFloatNested is_rec dmd is_unlifted floats rhs
                   = return (floats, rhs)
       | otherwise = dontFloat floats rhs
+
+    ---------------------
+    float_top floats rhs
+      | allLazyTop floats || canFloatTop floats
+      = return (floats, rhs)
+      | otherwise
+      = dontFloat floats rhs
 
 dontFloat :: Floats -> CpeRhs -> UniqSM (Floats, CpeBody)
 -- Non-empty floats, but do not want to float from rhs
@@ -1190,6 +1192,7 @@ data OkToSpec
    | IfUnboxedOk        -- A mixture of lazy lifted bindings and n
                         -- ok-to-speculate unlifted bindings
    | NotOkToSpec        -- Some not-ok-to-speculate unlifted bindings
+   deriving (Eq)
 
 mkFloat :: Demand -> Bool -> Id -> CpeRhs -> FloatingBind
 mkFloat dmd is_unlifted bndr rhs
@@ -1265,6 +1268,18 @@ deFloatTop (Floats _ floats)
     occurAnalyseRHSs (Rec xes)    = Rec [(x, occurAnalyseExpr_NoBinderSwap e) | (x, e) <- xes]
 
 ---------------------------------------------------------------------------
+
+canFloatTop :: Floats -> Bool
+canFloatTop (Floats ok_to_spec fs)
+  = ASSERT(ok_to_spec /= OkToSpec)
+      -- checked by the previous condition in float_top
+    not (any is_float_case fs)
+      -- can't float case to top-level
+      -- TODO (osa): Shouldn't we float everything else though?
+  where
+    is_float_case :: FloatingBind -> Bool
+    is_float_case FloatCase{} = True
+    is_float_case _ = False
 
 wantFloatNested :: RecFlag -> Demand -> Bool -> Floats -> CpeRhs -> Bool
 wantFloatNested is_rec dmd is_unlifted floats rhs
