@@ -123,9 +123,8 @@ import TidyPgm
 import CorePrep
 import CoreToStg        ( coreToStg )
 import qualified StgCmm ( codeGen )
-import StgSyn           ( StgTopBinding, pprGenStgTopBindings )
+import StgSyn           ( StgTopBinding )
 import StgFVs           ( annTopBindingsFreeVars )
-import StgDeps          ( annTopBindingsDeps, depSortStgBinds )
 import StgCafAnal       ( stgCafAnal )
 import CostCentre
 import ProfInit
@@ -1352,7 +1351,7 @@ hscGenHardCode hsc_env cgguts mod_summary mod_iface output_filename = do
             ----------- Update iface with CafInfos ----------------
 
             let mod_iface' = updateModIface mod_iface caf_infos
-            hscMaybeWriteIface dflags mod_iface' True mod_summary
+            hscWriteIface dflags mod_iface' False mod_summary
 
             ------------------  Code output -----------------------
             rawcmms0 <- {-# SCC "cmmToRawCmm" #-}
@@ -1475,23 +1474,12 @@ doCodeGen hsc_env this_mod data_tycons
               cost_centre_info stg_binds hpc_info = do
     let dflags = hsc_dflags hsc_env
 
+    let caf_infos = stgCafAnal stg_binds
+
+    dumpIfSet_dyn dflags Opt_D_dump_stg "CAF analysis:" $
+      ppr (dVarEnvElts (alwaysUnsafeUfmToUdfm caf_infos))
+
     let stg_binds_w_fvs = annTopBindingsFreeVars stg_binds
-
-    dumpIfSet_dyn dflags Opt_D_dump_stg "Before codegen:" $
-      pprGenStgTopBindings stg_binds_w_fvs
-
-    let stg_binds_w_deps = annTopBindingsDeps stg_binds
-    let stg_binds_dep_sorted = depSortStgBinds stg_binds_w_deps
-    let caf_infos = stgCafAnal stg_binds_dep_sorted
-
-    -- dumpIfSet_dyn dflags Opt_D_dump_stg "Before codegen (dep sorted):" $
-    --   pprGenStgTopBindings (map fst stg_binds_dep_sorted)
-
-    dumpIfSet_dyn dflags Opt_D_dump_stg "Free variables:" $
-      ppr stg_binds_dep_sorted
-
-    dumpIfSet_dyn dflags Opt_D_dump_stg "CAF analysis:"
-      (ppr (dVarEnvElts (alwaysUnsafeUfmToUdfm caf_infos)))
 
     let cmm_stream :: Stream IO CmmGroup ()
         cmm_stream = {-# SCC "StgCmm" #-}
