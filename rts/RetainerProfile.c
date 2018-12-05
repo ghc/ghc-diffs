@@ -395,7 +395,6 @@ find_srt( stackPos *info )
  * -------------------------------------------------------------------------- */
 static void
 actualPush(stackElement *se) {
-    bdescr *nbd;      // Next Block Descriptor
     if (stackTop - 1 < stackBottom) {
 #if defined(DEBUG_RETAINER)
         // debugBelch("push() to the next stack.\n");
@@ -404,13 +403,15 @@ actualPush(stackElement *se) {
         // to the next stack.
         currentStack->free = (StgPtr)stackTop;
 
+        bdescr *nbd;      // Next Block Descriptor
         if (currentStack->link == NULL) {
             nbd = allocGroup(BLOCKS_IN_STACK);
             nbd->link = NULL;
             nbd->u.back = currentStack;
             currentStack->link = nbd;
-        } else
+        } else {
             nbd = currentStack->link;
+        }
 
         newStackBlock(nbd);
     }
@@ -440,7 +441,7 @@ actualPush(stackElement *se) {
  *  c_child_r - closure retainer.
  */
 static INLINE void
-pushClosure( StgClosure *c, StgClosure *p, retainer c_child_r) {
+pushClosure(StgClosure *c, StgClosure *p, retainer c_child_r) {
     stackElement se;
 
     se.c = c;
