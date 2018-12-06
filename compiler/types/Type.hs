@@ -2726,44 +2726,9 @@ typeKind ty@(ForAllTy {})
     (tvs, body) = splitTyVarForAllTys ty
     body_kind   = typeKind body
 
------------------------------
-tcTypeKind :: HasDebugCallStack => Type -> Kind
-tcTypeKind (TyConApp tc tys) = piResultTys (tyConKind tc) tys
-tcTypeKind (LitTy l)         = typeLiteralKind l
-tcTypeKind (TyVarTy tyvar)   = tyVarKind tyvar
-tcTypeKind (CastTy _ty co)   = pSnd $ coercionKind co
-tcTypeKind (CoercionTy co)   = coercionType co
-
-tcTypeKind (FunTy arg res)
-  | isPredTy arg && isPredTy res = constraintKind
-  | otherwise                    = liftedTypeKind
-
-tcTypeKind (AppTy fun arg)
-  = go fun [arg]
-  where
-    -- Accumulate the type arugments, so we can call piResultTys,
-    -- rather than a succession of calls to piResultTy (which is
-    -- asymptotically costly as the number of arguments increases)
-    go (AppTy fun arg) args = go fun (arg:args)
-    go fun             args = piResultTys (tcTypeKind fun) args
-
-tcTypeKind ty@(ForAllTy {})
-  | tcIsConstraintKind body_kind
-  = constraintKind
-
-  | otherwise
-  = case occCheckExpand tvs body_kind of   -- We must make sure tv does not occur in kind
-      Just k' -> k'                        -- As it is already out of scope!
-      Nothing -> pprPanic "tcTypeKind"
-                  (ppr ty $$ ppr tvs $$ ppr body <+> dcolon <+> ppr body_kind)
-  where
-    (tvs, body) = splitTyVarForAllTys ty
-    body_kind = tcTypeKind body
-
-
 isPredTy :: Type -> Bool
 -- See Note [Types for coercions, predicates, and evidence]
-isPredTy ty = tcIsConstraintKind (tcTypeKind ty)
+isPredTy ty = tcIsConstraintKind (typeKind ty)
 
 --------------------------
 typeLiteralKind :: TyLit -> Kind

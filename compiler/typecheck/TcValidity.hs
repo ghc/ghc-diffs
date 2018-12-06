@@ -319,7 +319,8 @@ checkValidType :: UserTypeCtxt -> Type -> TcM ()
 -- Assumes argument is fully zonked
 -- Not used for instance decls; checkValidInstance instead
 checkValidType ctxt ty
-  = do { traceTc "checkValidType" (ppr ty <+> text "::" <+> ppr (tcTypeKind ty))
+  = do { ki <- tcTypeKind ty
+       ; traceTc "checkValidType" (ppr ty <+> text "::" <+> ppr ki)
        ; rankn_flag  <- xoptM LangExt.RankNTypes
        ; impred_flag <- xoptM LangExt.ImpredicativeTypes
        ; let gen_rank :: Rank -> Rank
@@ -382,7 +383,7 @@ checkValidType ctxt ty
        --     and there may be nested foralls for the subtype test to examine
        ; checkAmbiguity ctxt ty
 
-       ; traceTc "checkValidType done" (ppr ty <+> text "::" <+> ppr (tcTypeKind ty)) }
+       ; traceTc "checkValidType done" (ppr ty <+> text "::" <+> ppr ki) }
 
 checkValidMonoType :: Type -> TcM ()
 -- Assumes argument is fully zonked
@@ -395,15 +396,15 @@ checkTySynRhs ctxt ty
   | tcReturnsConstraintKind actual_kind
   = do { ck <- xoptM LangExt.ConstraintKinds
        ; if ck
-         then  when (tcIsConstraintKind actual_kind)
-                    (do { dflags <- getDynFlags
-                        ; check_pred_ty emptyTidyEnv dflags ctxt ty })
-         else addErrTcM (constraintSynErr emptyTidyEnv actual_kind) }
+         then when (tcIsConstraintKind actual_kind)
+                   (do { dflags <- getDynFlags
+                       ; check_pred_ty emptyTidyEnv dflags ctxt ty })
+         else do { ki <- tcTypeKind ty
+                 ; addErrTcM (constraintSynErr emptyTidyEnv ki) } }
 
   | otherwise
   = return ()
-  where
-    actual_kind = tcTypeKind ty
+
 
 {-
 Note [Higher rank types]
@@ -496,6 +497,10 @@ check_type env ctxt rank ty
 
         ; check_type env' ctxt rank tau      -- Allow foralls to right of arrow
 
+        ; tau_kind <- tcTypeKind tau
+        ; let phi_kind | null theta = tau_kind
+                       | otherwise  = liftedTypeKind
+        -- If there are any constraints, the kind is *. (#11405)
         ; checkTcM (not (any (`elemVarSet` tyCoVarsOfType phi_kind) tvs))
                    (forAllEscapeErr env' ty tau_kind)
         }
@@ -506,10 +511,6 @@ check_type env ctxt rank ty
     tvs          = binderVars tvbs
     (env', _)    = tidyVarBndrs env tvs
 
-    tau_kind              = tcTypeKind tau
-    phi_kind | null theta = tau_kind
-             | otherwise  = liftedTypeKind
-        -- If there are any constraints, the kind is *. (#11405)
 
 check_type env ctxt rank (FunTy arg_ty res_ty)
   = do  { check_type env ctxt arg_rank arg_ty

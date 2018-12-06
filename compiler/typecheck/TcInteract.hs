@@ -1631,11 +1631,12 @@ solveByUnification :: CtEvidence -> TcTyVar -> Xi -> TcS ()
 --       we often write tv := xi
 solveByUnification wd tv xi
   = do { let tv_ty = mkTyVarTy tv
+       ; xi_kind <- tcTypeKind xi
        ; traceTcS "Sneaky unification:" $
                        vcat [text "Unifies:" <+> ppr tv <+> text ":=" <+> ppr xi,
                              text "Coercion:" <+> pprEq tv_ty xi,
-                             text "Left Kind is:" <+> ppr (tcTypeKind tv_ty),
-                             text "Right Kind is:" <+> ppr (tcTypeKind xi) ]
+                             text "Left Kind is:" <+> ppr (tyVarKind tv),
+                             text "Right Kind is:" <+> ppr xi_kind ]
 
        ; unifyTyVar tv xi
        ; setEvBindIfWanted wd (evCoercion (mkTcNomReflCo xi)) }

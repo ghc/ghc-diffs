@@ -14,7 +14,7 @@ module Bag (
         emptyBag, unitBag, unionBags, unionManyBags,
         mapBag,
         elemBag, lengthBag,
-        filterBag, partitionBag, partitionBagWith,
+        filterBag, partitionBag, partitionBagWith, partitionBagEithers,
         concatBag, catBagMaybes, foldBag, foldrBag, foldlBag,
         isEmptyBag, isSingletonBag, consBag, snocBag, anyBag, allBag,
         listToBag, bagToList, mapAccumBagL,
@@ -155,6 +155,21 @@ partitionBag pred (TwoBags b1 b2)
 partitionBag pred (ListBag vs) = (listToBag sats, listToBag fails)
   where (sats, fails) = partition pred vs
 
+
+partitionBagEithers :: Bag (Either a b)
+                    -> (Bag a {- Left  -},
+                        Bag b {- Right -})
+partitionBagEithers EmptyBag = (EmptyBag, EmptyBag)
+partitionBagEithers (UnitBag val)
+    = case val of
+         Left a  -> (UnitBag a, EmptyBag)
+         Right b -> (EmptyBag, UnitBag b)
+partitionBagEithers (TwoBags b1 b2)
+    = (sat1 `unionBags` sat2, fail1 `unionBags` fail2)
+  where (sat1, fail1) = partitionBagEithers b1
+        (sat2, fail2) = partitionBagEithers b2
+partitionBagEithers (ListBag vs) = (listToBag sats, listToBag fails)
+  where (sats, fails) = partitionEithers vs
 
 partitionBagWith :: (a -> Either b c) -> Bag a
                     -> (Bag b {- Left  -},

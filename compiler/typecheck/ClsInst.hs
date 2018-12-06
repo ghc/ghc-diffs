@@ -459,20 +459,23 @@ doTyApp :: Class -> Type -> Type -> KindOrType -> TcM ClsInstResult
 --    (Typeable f, Typeable Int, Typeable Char)  --> (after some simp. steps)
 --    Typeable f
 doTyApp clas ty f tk
-  | isForAllTy (tcTypeKind f)
+  | isForAllTy (typeKind f)
   = return NoInstance -- We can't solve until we know the ctr.
   | otherwise
-  = return $ OneInst { cir_new_theta = map (mk_typeable_pred clas) [f, tk]
-                     , cir_mk_ev     = mk_ev
-                     , cir_what      = BuiltinInstance }
+  = do { f_pred  <- mk_typable_pred clas f
+       ; tk_pred <- mk_typable_pred clas tk
+       ; return $ OneInst { cir_new_theta = [f_pred, tk_pred]
+                          , cir_mk_ev     = mk_ev
+                          , cir_what      = BuiltinInstance }
   where
     mk_ev [t1,t2] = evTypeable ty $ EvTypeableTyApp (EvExpr t1) (EvExpr t2)
     mk_ev _ = panic "doTyApp"
 
 
 -- Emit a `Typeable` constraint for the given type.
-mk_typeable_pred :: Class -> Type -> PredType
-mk_typeable_pred clas ty = mkClassPred clas [ tcTypeKind ty, ty ]
+mk_typeable_pred :: Class -> Type -> TcM PredType
+mk_typeable_pred clas ty = do { kind <- tcTypeKind ty
+                              ; return (mkClassPred clas [ kind, ty ]) }
 
   -- Typeable is implied by KnownNat/KnownSymbol. In the case of a type literal
   -- we generate a sub-goal for the appropriate class.

@@ -1304,11 +1304,13 @@ can_eq_app ev s1 t1 s2 t2
     -- Test case: typecheck/should_run/Typeable1
     -- We could also include this mismatch check above (for W and D), but it's slow
     -- and we'll get a better error message not doing it
-  | s1k `mismatches` s2k
-  = canEqHardFailure ev (s1 `mkAppTy` t1) (s2 `mkAppTy` t2)
-
   | CtGiven { ctev_evar = evar, ctev_loc = loc } <- ev
-  = do { let co   = mkTcCoVarCo evar
+  = do { s1k <- tcTypeKind s1
+       ; s2k <- tcTypeKind s2
+       ; if isForAllTy s1k /= isForAllTy s2k
+         then canEqHardFailure ev (s1 `mkAppTy` t1) (s2 `mkAppTy` t2)
+         else
+    do { let co   = mkTcCoVarCo evar
              co_s = mkTcLRCo CLeft  co
              co_t = mkTcLRCo CRight co
        ; evar_s <- newGivenEvVar loc ( mkTcEqPredLikeEv ev s1 s2
@@ -1316,15 +1318,7 @@ can_eq_app ev s1 t1 s2 t2
        ; evar_t <- newGivenEvVar loc ( mkTcEqPredLikeEv ev t1 t2
                                      , evCoercion co_t )
        ; emitWorkNC [evar_t]
-       ; canEqNC evar_s NomEq s1 s2 }
-
-  where
-    s1k = tcTypeKind s1
-    s2k = tcTypeKind s2
-
-    k1 `mismatches` k2
-      =  isForAllTy k1 && not (isForAllTy k2)
-      || not (isForAllTy k1) && isForAllTy k2
+       ; canEqNC evar_s NomEq s1 s2 }}
 
 -----------------------
 -- | Break apart an equality over a casted type
@@ -1789,10 +1783,8 @@ canCFunEqCan ev fn tys fsk
               else do { traceTcS "canCFunEqCan: non-refl" $
                         vcat [ text "Kind co:" <+> ppr kind_co
                              , text "RHS:" <+> ppr fsk <+> dcolon <+> ppr (tyVarKind fsk)
-                             , text "LHS:" <+> hang (ppr (mkTyConApp fn tys))
-                                                  2 (dcolon <+> ppr (tcTypeKind (mkTyConApp fn tys)))
-                             , text "New LHS" <+> hang (ppr new_lhs)
-                                                     2 (dcolon <+> ppr (tcTypeKind new_lhs)) ]
+                             , text "LHS:" <+> ppr (mkTyConApp fn tys)
+                             , text "New LHS" <+> ppr new_lhs ]
                       ; (ev', new_co, new_fsk)
                           <- newFlattenSkolem flav (ctEvLoc ev) fn tys'
                       ; let xi = mkTyVarTy new_fsk `mkCastTy` kind_co
@@ -1821,6 +1813,17 @@ canEqTyVar :: CtEvidence          -- ev :: lhs ~ rhs
            -> TcType -> TcType      -- rhs: already flat
            -> TcS (StopOrContinue Ct)
 canEqTyVar ev eq_rel swapped tv1 ps_ty1 xi2 ps_xi2
+ = do { k2 <- tcTypeKind xi2
+      ; canEqTyVar1 ev eq_rel swapped tv1 ps_ty1 xi2 ps_xi2 k2
+
+canEqTyVar :: CtEvidence          -- ev :: lhs ~ rhs
+           -> EqRel -> SwapFlag
+           -> TcTyVar               -- tv1
+           -> TcType                -- lhs: pretty lhs, already flat
+           -> TcType -> TcType      -- rhs: already flat
+           -> TcKind                -- Kind of RHS
+           -> TcS (StopOrContinue Ct)
+canEqTyVar1 ev eq_rel swapped tv1 ps_ty1 xi2 ps_xi2 k2
   | k1 `tcEqType` k2
   = canEqTyVarHomo ev eq_rel swapped tv1 ps_ty1 xi2 ps_xi2
 
@@ -1879,11 +1882,8 @@ canEqTyVar ev eq_rel swapped tv1 ps_ty1 xi2 ps_xi2
        ; canEqTyVarHetero new_ev eq_rel tv1 sym_k1_co flat_k1 ps_ty1
                                         new_rhs flat_k2 ps_rhs } }
   where
-    xi1 = mkTyVarTy tv1
-
-    k1 = tyVarKind tv1
     k2 = tcTypeKind xi2
-
+    xi1 = mkTyVarTy tv1
     loc  = ctEvLoc ev
     flav = ctEvFlavour ev
 
@@ -2364,7 +2364,9 @@ unifyWanted :: CtLoc -> Role
 -- See Note [unifyWanted and unifyDerived]
 -- The returned coercion's role matches the input parameter
 unifyWanted loc Phantom ty1 ty2
-  = do { kind_co <- unifyWanted loc Nominal (tcTypeKind ty1) (tcTypeKind ty2)
+  = do { k1 <- tcTypeKind ty1
+       ; k2 <- tcTypeKind ty2
+       ; kind_co <- unifyWanted loc Nominal k1 k2
        ; return (mkPhantomCo kind_co ty1 ty2) }
 
 unifyWanted loc role orig_ty1 orig_ty2

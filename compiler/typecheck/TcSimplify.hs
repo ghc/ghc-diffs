@@ -2279,7 +2279,8 @@ floatEqualities skols given_ids ev_binds_var no_given_eqs
 
        -- Now we can pick the ones to float
        -- The constraints are un-flattened and de-canonicalised
-       ; let (candidate_eqs, no_float_cts) = partitionBag is_float_eq_candidate simples
+       ; simple_cands <- mapBagM is_float_eq_candidate simples
+       ; let (no_float_cts, candidate_eqs) = partitionBagEithers simple_cands
 
              seed_skols = mkVarSet skols     `unionVarSet`
                           mkVarSet given_ids `unionVarSet`
@@ -2332,19 +2333,33 @@ floatEqualities skols given_ids ev_binds_var no_given_eqs
     -- Identify which equalities are candidates for floating
     -- Float out alpha ~ ty, or ty ~ alpha which might be unified outside
     -- See Note [Which equalities to float]
+    --  Left => no-float, Right => Float
+    is_float_eq_candidate :: Ct -> TcM (Either Ct Ct)
     is_float_eq_candidate ct
       | pred <- ctPred ct
       , EqPred NomEq ty1 ty2 <- classifyPredType pred
-      , tcTypeKind ty1 `tcEqType` tcTypeKind ty2
-      = case (tcGetTyVar_maybe ty1, tcGetTyVar_maybe ty2) of
-          (Just tv1, _) -> float_tv_eq_candidate tv1 ty2
-          (_, Just tv2) -> float_tv_eq_candidate tv2 ty1
-          _             -> False
-      | otherwise = False
+      , float_tv_eq_candiate ty1 ty2
+      = do { k1 <- tcTypeKind ty1
+           ; k2 <- tcTypeKind ty2
+           ; if k1 `tcEqType` k2
+             then return (Right ct)
+             else return (Left ct) }
+      | otherwise
+      = return (Left ct)
 
-    float_tv_eq_candidate tv1 ty2  -- See Note [Which equalities to float]
-      =  isMetaTyVar tv1
-      && (not (isTyVarTyVar tv1) || isTyVarTy ty2)
+
+    float_tv_eq_candidate ty1 ty2  -- See Note [Which equalities to float]
+      | Just tv1 <- tcGetTyVar_maybe ty1
+      , ok tv1 ty2
+      = True
+      | Just tv2 <- tcGetTyVar_maybe ty2
+      , ok tv2 ty1
+      = True
+      | otherwise
+      = False
+
+    ok tv1 ty2 =  isMetaTyVar tv1
+              && (not (isTyVarTyVar tv1) || isTyVarTy ty2)
 
 
 {- Note [Float equalities from under a skolem binding]

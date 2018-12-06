@@ -1474,8 +1474,9 @@ flatten_app_ty_args fun_xi fun_co arg_tys
            Just (tc, xis) ->
              do { let tc_roles  = tyConRolesRepresentational tc
                       arg_roles = dropList xis tc_roles
+                ; fun_kind <- tcTypeKind fun_xi
                 ; (arg_xis, arg_cos, kind_co)
-                    <- flatten_vector (tcTypeKind fun_xi) arg_roles arg_tys
+                    <- flatten_vector fun_kind arg_roles arg_tys
 
                   -- Here, we have fun_co :: T xi1 xi2 ~ ty
                   -- and we need to apply fun_co to the arg_cos. The problem is
@@ -1493,8 +1494,9 @@ flatten_app_ty_args fun_xi fun_co arg_tys
                                   mkAppCos fun_co (map mkNomReflCo arg_tys)
                 ; return (app_xi, app_co, kind_co) }
            Nothing ->
-             do { (arg_xis, arg_cos, kind_co)
-                    <- flatten_vector (tcTypeKind fun_xi) (repeat Nominal) arg_tys
+             do { fun_kind <- tcTypeKind fun_xi
+                ; (arg_xis, arg_cos, kind_co)
+                    <- flatten_vector fun_kind (repeat Nominal) arg_tys
                 ; let arg_xi = mkAppTys fun_xi arg_xis
                       arg_co = mkAppCos fun_co arg_cos
                 ; return (arg_xi, arg_co, kind_co) }
@@ -1626,7 +1628,8 @@ flatten_exact_fam_app_fully tc tys
   -- See Note [Reduce type family applications eagerly]
      -- the following tcTypeKind should never be evaluated, as it's just used in
      -- casting, and casts by refl are dropped
-  = do { let reduce_co = mkNomReflCo (tcTypeKind (mkTyConApp tc tys))
+  = do { red_kind <- tcTypeKind (mkTyConApp tc tys)
+       ; let reduce_co = mkNomReflCo red_kind
        ; mOut <- try_to_reduce_nocache tc tys reduce_co id
        ; case mOut of
            Just out -> pure out
@@ -2060,9 +2063,13 @@ unflattenWanteds tv_eqs funeqs
                         -- NB: unlike unflattenFmv, filling a fmv here /does/
                         --     bump the unification count; it is "improvement"
                         -- Note [Unflattening can force the solver to iterate]
-      = ASSERT2( tyVarKind tv `eqType` tcTypeKind rhs, ppr ct )
-           -- CTyEqCan invariant should ensure this is true
-        do { is_filled <- isFilledMetaTyVar tv
+      = do { when debugIsOn $
+             do { rhs_kind <- tcTypeKind rhs
+                  -- CTyEqCan invariant should ensure this is true
+                ; ASSERT2( tyVarKind tv `eqType` tcTypeKind rhs, ppr ct )
+                  return () }
+
+           ; is_filled <- isFilledMetaTyVar tv
            ; elim <- case is_filled of
                False -> do { traceTcS "unflatten_eq 2" (ppr ct)
                            ; tryFill ev tv rhs }

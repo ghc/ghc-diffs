@@ -37,6 +37,10 @@ module TcMType (
   tauifyExpType, inferResultToType,
 
   --------------------------------
+  -- Getting the kind of a type
+  tcTypeKind, tcPiResultTys
+  
+  --------------------------------
   -- Creating new evidence variables
   newEvVar, newEvVars, newDict,
   newWanted, newWanteds, newHoleCt, cloneWanted, cloneWC,
@@ -124,6 +128,103 @@ import Maybes
 import Data.List        ( mapAccumL )
 import Control.Arrow    ( second )
 import qualified Data.Semigroup as Semi
+
+{-
+************************************************************************
+*                                                                      *
+            tcTypeKind
+*                                                                      *
+************************************************************************
+-}
+
+tcTypeKind :: HasDebugCallStack => TcType -> TcM TcKind
+tcTypeKind (TyConApp tc tys) = return (piResultTys (tyConKind tc) tys)
+tcTypeKind (LitTy l)         = return (typeLiteralKind l)
+tcTypeKind (CastTy _ty co)   = return (pSnd $ coercionKind co)
+tcTypeKind (CoercionTy co)   = return (coercionType co)
+
+tcTypeKind (FunTy arg res)
+  | do { arg_k <- tcTypeKind arg
+       ; if tcIsConstraintKind arg_k
+          then do { res_k <- tcTypeKind res
+                  ; if tcIsConstraintKind res_k
+                    then return constraintKind
+                    else resturn liftedTypeKind }
+          else return liftedTypeKind }
+
+tcTypeKind (AppTy fun arg)
+  = go fun [arg]
+  where
+    -- Accumulate the type arugments, so we can call piResultTys,
+    -- rather than a succession of calls to piResultTy (which is
+    -- asymptotically costly as the number of arguments increases)
+    go (AppTy fun arg) args = go fun (arg:args)
+    go fun             args = do { fun_k <- tcTypeKind fun
+                                 ; tcPiResultTys fun_k args }
+
+tcTypeKind ty@(ForAllTy {})
+  = do { body_k <- tcTypeKind body
+       ; if tcIsConstraintKind body_k
+         then return constraintKind
+         else case occCheckExpand tvs body_k of   -- We must make sure tv does
+                 Just k' -> return k'             -- not occur in kind
+                 Nothing -> pprPanic "tcTypeKind"
+                            (ppr ty $$ ppr tvs $$ ppr body <+> dcolon <+> ppr body_k)
+  where
+    (tvs, body) = tcSplitTyVarForAllTys ty
+    -- Here we are assuming no impredicativity,
+    -- so that any foralls are visible
+
+tcTypeKind (TyVarTy tv)
+  | isMetaTyVar tv
+  = do { maybe_ty <- readMetaTyVar tv
+       ; case maybe_ty of
+            Indirect ty -> tcTypeKind ty
+            Flexi       -> return (tyVarKind tv) }
+  | otherwise
+  = return (tyVarKind tv)
+
+tcPiResultTys :: HasDebugCallStack => TcType -> [TcType] -> TcM TcType
+tcPiResultTys ty orig_args = go empty_subst ty args
+  where
+    init_subst = mkEmptyTCvSubst $ mkInScopeSet (tyCoVarsOfTypes (ty:args))
+
+    go :: TCvSubst -> TcType -> [TcType] -> TcType
+    go subst ty []
+      = return (substTy subst ty) -- substTy has a fast-path for empty substitutions
+
+    go subst ty all_args@(arg:args)
+      | Just ty' <- tcView ty
+      = go subst ty' all_args
+
+      | FunTy _ res <- ty
+      = go subst res args
+
+      | ForAllTy (Bndr tv _) res <- ty
+      = go (extendTCvSubst subst tv arg) res args
+
+      | TyVarty tv <- ty
+      , isMetaTyVar tv
+       = do { maybe_ty <- readMetaTyVar tv
+            ; case maybe_ty of
+                 Indirect ty -> go subst ty all_args
+                 Flexi       -> try_subst subst ty all_args
+
+      | otherwise
+      = try_subst subst ty all_args
+
+    try_subst subst ty args
+      | not (isEmptyTCvSubst subst)  -- See Note [Care with kind instantiation]
+      = go init_subst (substTy subst ty) args
+
+      | otherwise
+      = -- We have not run out of arguments, but the function doesn't
+        -- have the right kind to apply to them; so panic.
+        -- Without the explicit isEmptyVarEnv test, an ill-kinded type
+        -- would give an infniite loop, which is very unhelpful
+        -- c.f. Trac #15473
+        pprPanic "tcpiResultTys" (ppr ty $$ ppr orig_args $$ ppr args)
+
 
 {-
 ************************************************************************
@@ -684,7 +785,8 @@ newFskTyVar fam_ty
                               , mtv_ref   = ref
                               , mtv_tclvl = tclvl }
              name = mkMetaTyVarName uniq (fsLit "fsk")
-       ; return (mkTcTyVar name (tcTypeKind fam_ty) details) }
+       ; fam_ty_kind <- tcTypeKind fam_ty
+       ; return (mkTcTyVar name fam_ty_kind details) }
 
 newFmvTyVar :: TcType -> TcM TcTyVar
 -- Very like newMetaTyVar, except sets mtv_tclvl to one less
@@ -697,7 +799,8 @@ newFmvTyVar fam_ty
                               , mtv_ref   = ref
                               , mtv_tclvl = tclvl }
              name = mkMetaTyVarName uniq (fsLit "s")
-       ; return (mkTcTyVar name (tcTypeKind fam_ty) details) }
+       ; fam_ty_kind <- tcTypeKind fam_ty
+       ; return (mkTcTyVar name fam_ty_kind details) }
 
 newMetaDetails :: MetaInfo -> TcM TcTyVarDetails
 newMetaDetails info
@@ -784,10 +887,9 @@ writeMetaTyVarRef tyvar ref ty
   = do { meta_details <- readMutVar ref;
        -- Zonk kinds to allow the error check to work
        ; zonked_tv_kind <- zonkTcType tv_kind
-       ; zonked_ty      <- zonkTcType ty
-       ; let zonked_ty_kind = tcTypeKind zonked_ty  -- Need to zonk even before typeKind;
-                                                    -- otherwise, we can panic in piResultTy
-             kind_check_ok = tcIsConstraintKind zonked_tv_kind
+       ; ty_kind        <- tcTypeKind ty
+       ; zonked_ty_kind <- zonkTcType ty_kind
+       ; let kind_check_ok = tcIsConstraintKind zonked_tv_kind
                           || tcEqKind zonked_ty_kind zonked_tv_kind
              -- Hack alert! tcIsConstraintKind: see TcHsType
              -- Note [Extra-constraint holes in partial type signatures]
@@ -2199,4 +2301,4 @@ formatLevPolyErr ty
                , text "Kind:" <+> pprWithTYPE tidy_ki ])
   where
     (tidy_env, tidy_ty) = tidyOpenType emptyTidyEnv ty
-    tidy_ki             = tidyType tidy_env (tcTypeKind ty)
+    tidy_ki             = tidyType tidy_env (typeKind ty)
