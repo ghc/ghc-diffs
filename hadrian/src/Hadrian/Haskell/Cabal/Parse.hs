@@ -47,6 +47,7 @@ import Hadrian.Target
 import Base
 import Builder
 import Context
+import Context.Path (stagePath)
 import Flavour
 import Packages
 import Settings
@@ -157,6 +158,18 @@ copyPackage context@Context {..} = do
     let v = if verbosity >= Loud then "-v3" else "-v0"
     liftIO $ C.defaultMainWithHooksNoReadArgs C.autoconfUserHooks gpd
         [ "copy", "--builddir", ctxPath, "--target-package-db", pkgDbPath, v ]
+
+    -- Temporary hack to fix #15837 (see comment 14). This should be removed
+    -- once a better solution is found.
+    when (package == rts) $ do
+        buildPath' <- buildPath context
+        stagePath' <- stagePath context
+        distDir'   <- distDir
+        soFiles    <- getDirectoryFiles buildPath' ["libffi.so*"]
+        forM_ soFiles $ \soFile -> copyFileUntracked
+            (buildPath' -/- soFile)
+            (stagePath' -/- "lib" -/- distDir' -/- soFile)
+        
 
 -- | Register the 'Package' of a given 'Context' into the package database.
 registerPackage :: Context -> Action ()

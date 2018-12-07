@@ -7,12 +7,44 @@ import Settings.Builders.Common
 import Target
 import Utilities
 
+{- Note [Hadrian: install libffi hack]
+
+
+
+
+
+
+DO NOT MERGE
+
+TODO Write this!
+
+
+
+
+-}
+
 libffiDependencies :: [FilePath]
 libffiDependencies = ["ffi.h", "ffitarget.h"]
 
-libffiLibrary :: FilePath
-libffiLibrary = "inst/lib/libffi.a"
+libffiLibraryDistDir :: FilePath
+libffiLibraryDistDir = "inst/lib"
 
+libffiDynamicLibraryFile :: FilePath
+libffiDynamicLibraryFile = "libffi.so"
+
+libffiStaticLibrary :: FilePath
+libffiStaticLibrary = libffiLibraryDistDir -/- "libffi.a"
+
+libffiDynamicLibrary :: FilePath
+libffiDynamicLibrary = libffiLibraryDistDir -/- libffiDynamicLibraryFile
+
+libffiLibraries :: [FilePath]
+libffiLibraries = [libffiStaticLibrary, libffiDynamicLibrary]
+
+-- | Given a way, this return the path to the .a or .so libffi library file.
+-- after building libffi, the .a and .so files will be copied to these paths.
+-- These paths will be under the rts build directory as libffi is bundled with
+-- the rts package.
 rtsLibffiLibrary :: Way -> Action FilePath
 rtsLibffiLibrary way = do
     name    <- libffiLibraryName
@@ -47,11 +79,12 @@ libffiRules = do
     root <- buildRootRules
     fmap ((root <//> "rts/build") -/-) libffiDependencies &%> \_ -> do
         libffiPath <- libffiBuildPath
-        need [libffiPath -/- libffiLibrary]
+        need (fmap (libffiPath -/-) libffiLibraries)
 
     -- we set a higher priority because this overlaps
     -- with the static lib rule from Rules.Library.libraryRules.
-    priority 2.0 $ root <//> libffiLibrary %> \_ -> do
+
+    priority 2.0 $ fmap (root <//>) libffiLibraries &%> \_ -> do
         useSystemFfi <- flag UseSystemFfi
         rtsPath      <- rtsBuildPath
         if useSystemFfi
@@ -70,9 +103,23 @@ libffiRules = do
                 copyFile header (rtsPath -/- takeFileName header)
 
             ways <- interpretInContext libffiContext (getLibraryWays <> getRtsWays)
+
+            -- Install static libraries.
             forM_ (nubOrd ways) $ \way -> do
                 rtsLib <- rtsLibffiLibrary way
+                let libffiLibrary = if Dynamic `wayUnit` way
+                                        then libffiDynamicLibrary
+                                        else libffiStaticLibrary
                 copyFileUntracked (libffiPath -/- libffiLibrary) rtsLib
+
+            -- Install dynamic library.
+
+            let libffiLibraryDistPath = libffiPath -/- libffiLibraryDistDir
+            soFiles <- getDirectoryFiles libffiLibraryDistPath ["libffi.so*"]
+            rtsPath <- rtsBuildPath
+            forM_ soFiles $ \soFile -> copyFileUntracked
+                (libffiLibraryDistPath -/- soFile)
+                (rtsPath -/- soFile)
 
             putSuccess "| Successfully built custom library 'libffi'"
 
