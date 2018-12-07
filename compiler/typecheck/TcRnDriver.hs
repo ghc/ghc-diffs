@@ -439,7 +439,8 @@ tcRnSrcDecls explicit_mod_hdr decls
         -- might not be complete when using reify (see #12777).
         -- and also after we zonk the first time because we run typed splices
         -- in the zonker which gives rise to the finalisers.
-      ; (tcg_env_mf, _) <- setGblEnv (clearTcGblEnv tcg_env) run_th_modfinalizers
+      ; (tcg_env_mf, _) <- setGblEnv (clearTcGblEnv tcg_env)
+                                     run_th_modfinalizers
       ; finishTH
       ; traceTc "Tc11" empty
 
@@ -450,11 +451,12 @@ tcRnSrcDecls explicit_mod_hdr decls
 
       ; let { final_type_env = plusTypeEnv (tcg_type_env tcg_env)
                                 (plusTypeEnv bind_env_mf bind_env)
-            ; tcg_env' = tcg_env_mf { tcg_binds    = binds' `unionBags` binds_mf,
-                                   tcg_ev_binds = ev_binds' `unionBags` ev_binds_mf ,
-                                   tcg_imp_specs = imp_specs' ++ imp_specs_mf ,
-                                   tcg_rules    = rules' ++ rules_mf ,
-                                   tcg_fords    = fords' ++ fords_mf } } ;
+            ; tcg_env' = tcg_env_mf
+                          { tcg_binds    = binds' `unionBags` binds_mf,
+                            tcg_ev_binds = ev_binds' `unionBags` ev_binds_mf ,
+                            tcg_imp_specs = imp_specs' ++ imp_specs_mf ,
+                            tcg_rules    = rules' ++ rules_mf ,
+                            tcg_fords    = fords' ++ fords_mf } } ;
 
       ; setGlobalTypeEnv tcg_env' final_type_env
 
