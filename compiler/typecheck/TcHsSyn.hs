@@ -81,6 +81,8 @@ import Util
 import UniqFM
 import CoreSyn
 
+import {-# SOURCE #-} TcSplice (runTopSplice)
+
 import Control.Monad
 import Data.List  ( partition )
 import Control.Arrow ( second )
@@ -774,7 +776,7 @@ zonkExpr env (HsTcBracketOut x body bs)
                                       return (PendingTcSplice n e')
 
 zonkExpr env (HsSpliceE _ (HsSplicedT s)) =
-  runDelayedSplice s >>= zonkExpr env
+  runTopSplice s >>= zonkExpr env
 
 zonkExpr _ (HsSpliceE x s) = WARN( True, ppr s ) -- Should not happen
                            return (HsSpliceE x s)

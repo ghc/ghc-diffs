@@ -26,7 +26,7 @@ module TcSplice(
      runMetaE, runMetaP, runMetaT, runMetaD, runQuasi,
      tcTopSpliceExpr, lookupThName_maybe,
      defaultRunMeta, runMeta', runRemoteModFinalizers,
-     finishTH
+     finishTH, runTopSplice
       ) where
 
 #include "HsVersions.h"
@@ -495,7 +495,7 @@ tcTopSplice expr res_ty
                           tcMonoExpr expr (mkCheckExpType meta_exp_ty)
        ; lcl_env <- getLclEnv
        ; let delayed_splice
-              = RunDelayedSplice (runTopSplice lcl_env expr res_ty q_expr)
+              = DelayedSplice lcl_env expr res_ty q_expr
        ; return (HsSpliceE noExt (HsSplicedT delayed_splice))
 
        }
@@ -503,10 +503,8 @@ tcTopSplice expr res_ty
 
 -- This is called in the zonker
 -- See Note [Running typed splices in the zonker]
-runTopSplice :: TcLclEnv -> LHsExpr GhcRn
-                         -> TcType
-                         -> LHsExpr GhcTcId -> TcM (HsExpr GhcTc)
-runTopSplice lcl_env orig_expr res_ty q_expr
+runTopSplice :: DelayedSplice -> TcM (HsExpr GhcTc)
+runTopSplice (DelayedSplice lcl_env orig_expr res_ty q_expr)
   = setLclEnv lcl_env $ do {
          zonked_ty <- zonkTcType res_ty
        ; zonked_q_expr <- zonkTopLExpr q_expr
