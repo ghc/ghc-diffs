@@ -193,7 +193,7 @@ rtsBuildPath = buildPath rtsContext
 
 -- | The 'libffi' library is considered a 'Stage1' package.
 libffiContext :: Context
-libffiContext = vanillaContext Stage1 libffi
+libffiContext = Context Stage1 libffi dynamic
 
 -- | Build directory for in-tree 'libffi' library.
 libffiBuildPath :: Action FilePath

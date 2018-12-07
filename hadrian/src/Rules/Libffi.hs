@@ -7,12 +7,66 @@ import Settings.Builders.Common
 import Target
 import Utilities
 
+{-
+Note [Hadrian: install libffi hack]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are 2 important steps in handling libffi's .a and .so files:
+
+  1. libffi's .a and .so files are copied from the libffi build dir to the rts
+  build dir. This is because libffi is ultimately bundled with the rts package.
+  Relevant code is in libffiRules.
+  2. The rts is "installed" via the hadrian/src/Hadrian/Haskell/Cabal/Parse.hs:
+  copyPackage action. This uses the "cabal copy" command which attempt to copy
+  the relevant .a and .so files as well as many other files to the install dir.
+
+If hadrian eventually tries to link the ghc binary whith the previous stage's
+ghc, that ghc sees rts as a dependancyt. Rts has libCffi as an
+"extra-bundled-library" and hence links with the -lffi option. The linker then
+requires that the install dir contain "libffi.so", "libffi.so.7", and
+"libffi.so.7.1.0". This, unfortunatelly is at odds with cabal's behavior which
+expects an .a and .so file per way with the name
+libCffi-<way_suffix>-ghc<ghc version>.(a|so). This only seems to be a problem
+when dynamically linking (hadrian manages to link ghc statically using only the
+cabal convention for the .a files).
+
+Currently, to make both cabal and ghc happy in the dynamic case, we implement
+the cabal convention but also have a hack to copy the .so files with the ghc
+convention. The .so files generated when building libffi already have the
+correct naming convention so we simply copy all files matching "libffi.so*".
+This logic is implemented in both step 1 and 2 listed above.
+
+This should eventually be revisited and the hack removed. A better solution
+would be to align the naming conventions. It should be possible to change
+cabal's behavior to match ghc's. Luckily "extra-bundled-library" seems to be
+used exclusively by the rts package (as revield by a google/github search), so
+breaking user code is of little concern here.
+
+See comment 14 of issue #15837 for original comments on this.
+-}
+
 libffiDependencies :: [FilePath]
 libffiDependencies = ["ffi.h", "ffitarget.h"]
 
-libffiLibrary :: FilePath
-libffiLibrary = "inst/lib/libffi.a"
+libffiLibraryDistDir :: FilePath
+libffiLibraryDistDir = "inst/lib"
 
+libffiDynamicLibraryFile :: FilePath
+libffiDynamicLibraryFile = "libffi.so"
+
+libffiStaticLibrary :: FilePath
+libffiStaticLibrary = libffiLibraryDistDir -/- "libffi.a"
+
+libffiDynamicLibrary :: FilePath
+libffiDynamicLibrary = libffiLibraryDistDir -/- libffiDynamicLibraryFile
+
+libffiLibraries :: [FilePath]
+libffiLibraries = [libffiStaticLibrary, libffiDynamicLibrary]
+
+-- | Given a way, this return the path to the .a or .so libffi library file.
+-- after building libffi, the .a and .so files will be copied to these paths.
+-- These paths will be under the rts build directory as libffi is bundled with
+-- the rts package.
 rtsLibffiLibrary :: Way -> Action FilePath
 rtsLibffiLibrary way = do
     name    <- libffiLibraryName
@@ -47,11 +101,12 @@ libffiRules = do
     root <- buildRootRules
     fmap ((root <//> "rts/build") -/-) libffiDependencies &%> \_ -> do
         libffiPath <- libffiBuildPath
-        need [libffiPath -/- libffiLibrary]
+        need (fmap (libffiPath -/-) libffiLibraries)
 
     -- we set a higher priority because this overlaps
     -- with the static lib rule from Rules.Library.libraryRules.
-    priority 2.0 $ root <//> libffiLibrary %> \_ -> do
+
+    priority 2.0 $ fmap (root <//>) libffiLibraries &%> \_ -> do
         useSystemFfi <- flag UseSystemFfi
         rtsPath      <- rtsBuildPath
         if useSystemFfi
@@ -69,10 +124,30 @@ libffiRules = do
             forM_ hs $ \header ->
                 copyFile header (rtsPath -/- takeFileName header)
 
-            ways <- interpretInContext libffiContext (getLibraryWays <> getRtsWays)
-            forM_ (nubOrd ways) $ \way -> do
+            ways <- nubOrd <$> interpretInContext
+                                    libffiContext
+                                    (getLibraryWays <> getRtsWays)
+
+            -- Install static libraries.
+            -- See Note [Hadrian: install libffi hack].
+            forM_ ways $ \way -> do
                 rtsLib <- rtsLibffiLibrary way
+                let libffiLibrary = if Dynamic `wayUnit` way
+                                        then libffiDynamicLibrary
+                                        else libffiStaticLibrary
                 copyFileUntracked (libffiPath -/- libffiLibrary) rtsLib
+
+            -- Install dynamic libraries.
+            -- See Note [Hadrian: install libffi hack].
+            when (any (wayUnit Dynamic) ways) $ do
+                let libffiLibraryDistPath = libffiPath -/- libffiLibraryDistDir
+                soFiles <- getDirectoryFiles
+                                libffiLibraryDistPath
+                                ["libffi.so*"]
+                rtsPath <- rtsBuildPath
+                forM_ soFiles $ \soFile -> copyFileUntracked
+                    (libffiLibraryDistPath -/- soFile)
+                    (rtsPath -/- soFile)
 
             putSuccess "| Successfully built custom library 'libffi'"
 
