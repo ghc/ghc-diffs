@@ -33,7 +33,7 @@ import Type
 import qualified Data.IntMap as M
 
 import Data.List        ( partition )
-import Unique (noinlineIdKey)
+import PrelNames (noinlineIdKey)
 
 #include "HsVersions.h"
 
