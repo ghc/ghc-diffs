@@ -33,6 +33,7 @@ import Type
 import qualified Data.IntMap as M
 
 import Data.List        ( partition )
+import Unique (noinlineIdKey)
 
 #include "HsVersions.h"
 
@@ -396,6 +397,10 @@ floatExpr (Var v)   = (zeroStats, emptyFloats, Var v)
 floatExpr (Type ty) = (zeroStats, emptyFloats, Type ty)
 floatExpr (Coercion co) = (zeroStats, emptyFloats, Coercion co)
 floatExpr (Lit lit) = (zeroStats, emptyFloats, Lit lit)
+
+floatExpr (App e a) | e `hasKey` noinlineIdKey
+                    , pprTrace "floatExpr" (ppr a) False
+                    = undefined
 
 floatExpr (App e a)
   = case (atJoinCeiling $ floatExpr  e) of { (fse, floats_e, e') ->
