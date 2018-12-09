@@ -1450,10 +1450,11 @@ isAliasToLocalOrIntoThisModule alias lab
 
 isAliasToLocalOrIntoThisModule _ lab
  | Just nam <- hasHaskellName lab
+ , isStaticClosureLabel lab || pprTrace "isAliasToLocal?" (ppr lab) False
  , isInternalName nam
  = True
 
-isAliasToLocalOrIntoThisModule _ _ = False
+isAliasToLocalOrIntoThisModule indi new = pprTrace "isAliasToLocal" (ppr indi <+> ppr new) False
 
 {-
    Note [emit-time elimination of static indirections]
