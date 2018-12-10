@@ -1351,7 +1351,18 @@ hscGenHardCode hsc_env cgguts mod_summary mod_iface output_filename = do
             ----------- Update iface with CafInfos ----------------
 
             let mod_iface' = updateModIface mod_iface caf_infos
-            hscWriteIface dflags mod_iface' False mod_summary
+            -- Overwrite the interface wile with CAF infos. Note that we can't
+            -- use hscWriteIface here: if we're generating code for Dyn way we
+            -- need to update the Dyn way iface file, otierwise the normal iface
+            -- file.
+            let ifaceFile = ml_hi_file (ms_location mod_summary)
+            if elem WayDyn (ways dflags)
+              then do
+                let dynIfaceFile = replaceExtension ifaceFile (dynHiSuf dflags)
+                    dynIfaceFile' = addBootSuffix_maybe (mi_boot mod_iface') dynIfaceFile
+                writeIfaceFile dflags dynIfaceFile' mod_iface'
+              else
+                writeIfaceFile dflags ifaceFile mod_iface'
 
             ------------------  Code output -----------------------
             rawcmms0 <- {-# SCC "cmmToRawCmm" #-}
