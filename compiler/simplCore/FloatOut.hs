@@ -399,8 +399,9 @@ floatExpr (Type ty) = (zeroStats, emptyFloats, Type ty)
 floatExpr (Coercion co) = (zeroStats, emptyFloats, Coercion co)
 floatExpr (Lit lit) = (zeroStats, emptyFloats, Lit lit)
 
-floatExpr (App e a) | e `hasKey` noinlineIdKey
-                    , pprTrace "floatExpr" (ppr a) False
+floatExpr (App (App (Var v) _) e)
+                    | v `hasKey` noinlineIdKey
+                    , pprTrace "floatExpr" (ppr e) False
                     = undefined
 
 floatExpr (App e a)
