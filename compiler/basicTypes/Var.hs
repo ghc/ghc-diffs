@@ -419,20 +419,8 @@ instance B.Binary ArgFlag
 
 instance Binary ArgFlag where
   put_ bh = put_ bh . toStrict . runPut . B.put
-  get bh = withBinBuffer bh (return . runGet B.get . fromStrict)
+  get bh = fmap (runGet B.get . fromStrict) (get bh)
 
-
--- instance Binary ArgFlag where
---   put_ bh Required  = putByte bh 0
---   put_ bh Specified = putByte bh 1
---   put_ bh Inferred  = putByte bh 2
-
---   get bh = do
---     h <- getByte bh
---     case h of
---       0 -> return Required
---       1 -> return Specified
---       _ -> return Inferred
 
 {- *********************************************************************
 *                                                                      *
