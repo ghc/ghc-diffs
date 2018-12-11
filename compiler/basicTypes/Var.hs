@@ -5,7 +5,7 @@
 \section{@Vars@: Variables}
 -}
 
-{-# LANGUAGE CPP, FlexibleContexts, MultiWayIf, FlexibleInstances, DeriveDataTypeable #-}
+{-# LANGUAGE CPP, FlexibleContexts, MultiWayIf, FlexibleInstances, DeriveDataTypeable, DeriveGeneric #-}
 
 -- |
 -- #name_types#
@@ -101,6 +101,11 @@ import Outputable
 
 import Data.Data
 
+import qualified Data.Binary as B
+import Data.Binary.Put (runPut)
+import Data.Binary.Get (runGet)
+import Data.ByteString.Lazy (fromStrict, toStrict)
+import GHC.Generics (Generic)
 {-
 ************************************************************************
 *                                                                      *
@@ -384,7 +389,7 @@ updateVarTypeM f id = do { ty' <- f (varType id)
 -- prohibited entirely from appearing in source Haskell ('Inferred')?
 -- See Note [VarBndrs, TyCoVarBinders, TyConBinders, and visibility] in TyCoRep
 data ArgFlag = Inferred | Specified | Required
-  deriving (Eq, Ord, Data)
+  deriving (Eq, Ord, Data, Generic)
   -- (<) on ArgFlag means "is less visible than"
 
 -- | Does this 'ArgFlag' classify an argument that is written in Haskell?
@@ -410,17 +415,24 @@ instance Outputable ArgFlag where
   ppr Specified = text "[spec]"
   ppr Inferred  = text "[infrd]"
 
-instance Binary ArgFlag where
-  put_ bh Required  = putByte bh 0
-  put_ bh Specified = putByte bh 1
-  put_ bh Inferred  = putByte bh 2
+instance B.Binary ArgFlag
 
-  get bh = do
-    h <- getByte bh
-    case h of
-      0 -> return Required
-      1 -> return Specified
-      _ -> return Inferred
+instance Binary ArgFlag where
+  put_ bh = put_ bh . toStrict . runPut . B.put
+  get bh = withBinBuffer bh (return . runGet B.get . fromStrict)
+
+
+-- instance Binary ArgFlag where
+--   put_ bh Required  = putByte bh 0
+--   put_ bh Specified = putByte bh 1
+--   put_ bh Inferred  = putByte bh 2
+
+--   get bh = do
+--     h <- getByte bh
+--     case h of
+--       0 -> return Required
+--       1 -> return Specified
+--       _ -> return Inferred
 
 {- *********************************************************************
 *                                                                      *
