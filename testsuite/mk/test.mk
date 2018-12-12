@@ -240,6 +240,14 @@ else
 RUNTEST_OPTS += -e config.local=True
 endif
 
+ifeq "$(INTEGER_SIMPLE)" "YES"
+RUNTEST_OPTS += -e config.integer_backend="integer-simple"
+else ifeq "$(INTEGER_GMP)" "YES"
+RUNTEST_OPTS += -e config.integer_backend="integer-gmp"
+else
+$(error "No integer backend selected")
+endif
+
 RUNTEST_OPTS +=  \
 	--rootdir=. \
 	--config-file=$(CONFIG) \
