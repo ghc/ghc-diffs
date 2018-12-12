@@ -6,7 +6,7 @@ import Id
 import IdInfo
 import Name (Name)
 import NameEnv (depAnal)
-import Outputable
+-- import Outputable
 import StgDeps
 import StgSyn
 import VarEnv
@@ -53,7 +53,7 @@ stgCafAnal pgm = foldr update_env emptyVarEnv pgm_sorted
     update_env bind env = plusVarEnv env (cafAnalTopBinding env bind)
 
 depSort :: [(StgTopBinding, FVs)] -> [(StgTopBinding, FVs)]
-depSort = map get_binds . depAnal defs uses
+depSort = concatMap get_binds . depAnal defs uses
   where
     uses, defs :: (StgTopBinding, FVs) -> [Name]
 
@@ -68,8 +68,12 @@ depSort = map get_binds . depAnal defs uses
 
     defs (bind, _) = map idName (bindersOfTop bind)
 
-    get_binds (AcyclicSCC bind) = bind
-    get_binds (CyclicSCC binds) = pprPanic "depSortStgBinds" (text "Found cyclic SCC:" $$ ppr binds)
+    get_binds (AcyclicSCC bind) =
+      [bind]
+    get_binds (CyclicSCC binds) =
+      -- TODO: Disabling this panic for now, see #16038
+      -- pprPanic "depSortStgBinds" (text "Found cyclic SCC:" $$ ppr binds)
+      binds
 
 -- | Given CafInfos of dependencies and a top-level binding return CafInfos of
 -- Ids that the binding binds.
