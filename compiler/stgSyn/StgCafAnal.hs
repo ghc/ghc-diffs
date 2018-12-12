@@ -48,7 +48,7 @@ stgCafAnal pgm = foldr update_env emptyVarEnv pgm_sorted
     -- Program with dependency annotations
     pgm_deps = annTopBindingsDeps pgm
     -- Sort in dependency order (defs come before uses)
-    pgm_sorted = depSort pgm_deps
+    pgm_sorted = reverse (depSort pgm_deps)
     -- Do CAF analysis for the binding, update the environment
     update_env bind env = plusVarEnv env (cafAnalTopBinding env bind)
 
