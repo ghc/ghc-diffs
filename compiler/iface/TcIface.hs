@@ -1454,7 +1454,7 @@ tcIdDetails _ (IfRecSelId tc naughty)
     tyThingPatSyn (AConLike (PatSynCon ps)) = ps
     tyThingPatSyn _ = panic "tcIdDetails: expecting patsyn"
 
-tcIdInfo :: Bool -> TopLevelFlag -> Name -> Type -> IfaceIdInfo -> IfL IdInfo
+tcIdInfo :: Bool -> TopLevelFlag -> Name -> Type -> [IfaceInfoItem] -> IfL IdInfo
 tcIdInfo ignore_prags toplvl name ty info = do
     lcl_env <- getLclEnv
     -- Set the CgInfo to something sensible but uninformative before
@@ -1463,9 +1463,7 @@ tcIdInfo ignore_prags toplvl name ty info = do
                   | otherwise       = vanillaIdInfo
     if ignore_prags
         then return init_info
-        else case info of
-                NoInfo -> return init_info
-                HasInfo info -> foldlM tcPrag init_info info
+        else foldlM tcPrag init_info info
   where
     tcPrag :: IdInfo -> IfaceInfoItem -> IfL IdInfo
     tcPrag info HsNoCafRefs        = return (info `setCafInfo`   NoCafRefs)

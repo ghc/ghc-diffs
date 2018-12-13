@@ -1400,20 +1400,14 @@ updateModIface mod_iface0 caf_infos0 =
       update_decls var caf_info (e : rest)
         = e : update_decls var caf_info rest
 
-      update_if_id_info :: CafInfo -> IfaceIdInfo -> IfaceIdInfo
-      update_if_id_info caf_info id_info =
-        case id_info of
-          NoInfo ->
-            case caf_info of
-              MayHaveCafRefs -> id_info
-              NoCafRefs -> HasInfo [HsNoCafRefs]
-          HasInfo infos0 ->
-            let
-              infos = filter (\case HsNoCafRefs -> False; _ -> True) infos0
-            in
-              HasInfo $ case caf_info of
-                MayHaveCafRefs -> infos
-                NoCafRefs -> HsNoCafRefs : infos
+      update_if_id_info :: CafInfo -> [IfaceInfoItem] -> [IfaceInfoItem]
+      update_if_id_info caf_info infos0 =
+        let
+          infos = filter (\case HsNoCafRefs -> False; _ -> True) infos0
+        in
+          case caf_info of
+            MayHaveCafRefs -> infos
+            NoCafRefs -> HsNoCafRefs : infos
     in
       foldr (\(id, caf_info) mod_iface -> update_id_caf_info mod_iface id caf_info)
             mod_iface0 (dVarEnvElts (alwaysUnsafeUfmToUdfm caf_infos0))

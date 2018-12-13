@@ -589,9 +589,8 @@ rnIfaceAxBranch d = do
              , ifaxbLHS = lhs
              , ifaxbRHS = rhs }
 
-rnIfaceIdInfo :: Rename IfaceIdInfo
-rnIfaceIdInfo NoInfo = pure NoInfo
-rnIfaceIdInfo (HasInfo is) = HasInfo <$> mapM rnIfaceInfoItem is
+rnIfaceIdInfo :: Rename [IfaceInfoItem]
+rnIfaceIdInfo = mapM rnIfaceInfoItem
 
 rnIfaceInfoItem :: Rename IfaceInfoItem
 rnIfaceInfoItem (HsUnfold lb if_unf)

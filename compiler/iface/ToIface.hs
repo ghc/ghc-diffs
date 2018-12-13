@@ -406,12 +406,10 @@ toIfaceIdDetails (RecSelId { sel_naughty = n
 toIfaceIdDetails other = pprTrace "toIfaceIdDetails" (ppr other)
                          IfVanillaId   -- Unexpected; the other
 
-toIfaceIdInfo :: IdInfo -> IfaceIdInfo
+toIfaceIdInfo :: IdInfo -> [IfaceInfoItem]
 toIfaceIdInfo id_info
-  = case catMaybes [arity_hsinfo, caf_hsinfo, strict_hsinfo,
-                    inline_hsinfo,  unfold_hsinfo, levity_hsinfo] of
-       []    -> NoInfo
-       infos -> HasInfo infos
+  = catMaybes [arity_hsinfo, caf_hsinfo, strict_hsinfo,
+               inline_hsinfo,  unfold_hsinfo, levity_hsinfo]
                -- NB: strictness and arity must appear in the list before unfolding
                -- See TcIface.tcUnfolding
   where

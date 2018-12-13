@@ -12,7 +12,7 @@ module IfaceSyn (
         IfaceConDecl(..), IfaceConDecls(..), IfaceEqSpec,
         IfaceExpr(..), IfaceAlt, IfaceLetBndr(..), IfaceJoinInfo(..),
         IfaceBinding(..), IfaceConAlt(..),
-        IfaceIdInfo(..), IfaceIdDetails(..), IfaceUnfolding(..),
+        IfaceIdDetails(..), IfaceUnfolding(..),
         IfaceInfoItem(..), IfaceRule(..), IfaceAnnotation(..), IfaceAnnTarget,
         IfaceClsInst(..), IfaceFamInst(..), IfaceTickish(..),
         IfaceClassBody(..),
@@ -110,7 +110,7 @@ data IfaceDecl
   = IfaceId { ifName      :: IfaceTopBndr,
               ifType      :: IfaceType,
               ifIdDetails :: IfaceIdDetails,
-              ifIdInfo    :: IfaceIdInfo }
+              ifIdInfo    :: [IfaceInfoItem] }
 
   | IfaceData { ifName       :: IfaceTopBndr,   -- Type constructor
                 ifBinders    :: [IfaceTyConBinder],
@@ -333,10 +333,6 @@ instance Outputable IfaceCompleteMatch where
 --   * The version comparison sees that new (=NoInfo) differs from old (=HasInfo *)
 --      and so gives a new version.
 
-data IfaceIdInfo
-  = NoInfo                      -- When writing interface file without -O
-  | HasInfo [IfaceInfoItem]     -- Has info, and here it is
-
 data IfaceInfoItem
   = HsArity         Arity
   | HsStrictness    StrictSig
@@ -516,7 +512,7 @@ data IfaceBinding
 -- IfaceLetBndr is like IfaceIdBndr, but has IdInfo too
 -- It's used for *non-top-level* let/rec binders
 -- See Note [IdInfo on nested let-bindings]
-data IfaceLetBndr = IfLetBndr IfLclName IfaceType IfaceIdInfo IfaceJoinInfo
+data IfaceLetBndr = IfLetBndr IfLclName IfaceType [IfaceInfoItem] IfaceJoinInfo
 
 data IfaceJoinInfo = IfaceNotJoinPoint
                    | IfaceJoinPoint JoinArity
@@ -895,12 +891,16 @@ pprIfaceDecl ss (IfaceId { ifName = var, ifType = ty,
   = vcat [ hang (pprPrefixIfDeclBndr (ss_how_much ss) (occName var) <+> dcolon)
               2 (pprIfaceSigmaType (ss_forall ss) ty)
          , ppShowIface ss (ppr details)
-         , ppShowIface ss (ppr info) ]
+         , ppShowIface ss (pprIdInfos info) ]
 
 pprIfaceDecl _ (IfaceAxiom { ifName = name, ifTyCon = tycon
                            , ifAxBranches = branches })
   = hang (text "axiom" <+> ppr name <+> dcolon)
        2 (vcat $ map (pprAxBranch (ppr tycon)) branches)
+
+pprIdInfos :: [IfaceInfoItem] -> SDoc
+pprIdInfos [] = Outputable.empty
+pprIdInfos is = text "{-" <+> pprWithCommas ppr is <+> text "-}"
 
 pprCType :: Maybe CType -> SDoc
 pprCType Nothing      = Outputable.empty
@@ -1248,11 +1248,6 @@ instance Outputable IfaceIdDetails where
                                 else Outputable.empty
   ppr IfDFunId          = text "DFunId"
 
-instance Outputable IfaceIdInfo where
-  ppr NoInfo       = Outputable.empty
-  ppr (HasInfo is) = text "{-" <+> pprWithCommas ppr is
-                     <+> text "-}"
-
 instance Outputable IfaceInfoItem where
   ppr (HsUnfold lb unf)     = text "Unfolding"
                               <> ppWhen lb (text "(loop-breaker)")
@@ -1513,9 +1508,8 @@ freeNamesIfTvBndr (_fs,k) = freeNamesIfKind k
 freeNamesIfIdBndr :: IfaceIdBndr -> NameSet
 freeNamesIfIdBndr (_fs,k) = freeNamesIfKind k
 
-freeNamesIfIdInfo :: IfaceIdInfo -> NameSet
-freeNamesIfIdInfo NoInfo      = emptyNameSet
-freeNamesIfIdInfo (HasInfo i) = fnList freeNamesItem i
+freeNamesIfIdInfo :: [IfaceInfoItem] -> NameSet
+freeNamesIfIdInfo = fnList freeNamesItem
 
 freeNamesItem :: IfaceInfoItem -> NameSet
 freeNamesItem (HsUnfold _ u) = freeNamesIfUnfold u
@@ -2016,16 +2010,6 @@ instance Binary IfaceIdDetails where
             0 -> return IfVanillaId
             1 -> do { a <- get bh; b <- get bh; return (IfRecSelId a b) }
             _ -> return IfDFunId
-
-instance Binary IfaceIdInfo where
-    put_ bh NoInfo      = putByte bh 0
-    put_ bh (HasInfo i) = putByte bh 1 >> lazyPut bh i -- NB lazyPut
-
-    get bh = do
-        h <- getByte bh
-        case h of
-            0 -> return NoInfo
-            _ -> liftM HasInfo $ lazyGet bh    -- NB lazyGet
 
 instance Binary IfaceInfoItem where
     put_ bh (HsArity aa)          = putByte bh 0 >> put_ bh aa
