@@ -5,16 +5,15 @@ import GhcPrelude
 import Id
 import IdInfo
 import Name (Name)
-import NameEnv (depAnal)
+import NameEnv
 -- import Outputable
 import StgDeps
 import StgSyn
-import VarEnv
 import VarSet
 
 import Data.Graph (SCC (..))
 
--- TODO: Only recording Ids in VarEnv just to be able to get useful debug
+-- TODO: Only recording Ids in NameEnv just to be able to get useful debug
 -- prints. Maybe only do it in debug build.
 
 -- | Given an STG program return a mapping from binders to their CafInfos. We
@@ -39,18 +38,18 @@ import Data.Graph (SCC (..))
 --   dependencies these are recorded in `idCafInfo`, otherwise we refer to the
 --   environment), so this pass is trivial.
 --
--- The `Id` in the range of the map is to help debugging (VarEnv only holds
+-- The `Id` in the range of the map is to help debugging (NameEnv only holds
 -- Uniques of keys).
 --
-stgCafAnal :: [StgTopBinding] -> VarEnv (Id, CafInfo)
-stgCafAnal pgm = foldr update_env emptyVarEnv pgm_sorted
+stgCafAnal :: [StgTopBinding] -> NameEnv (Id, CafInfo)
+stgCafAnal pgm = foldr update_env emptyNameEnv pgm_sorted
   where
     -- Program with dependency annotations
     pgm_deps = annTopBindingsDeps pgm
     -- Sort in dependency order (defs come before uses)
     pgm_sorted = reverse (depSort pgm_deps)
     -- Do CAF analysis for the binding, update the environment
-    update_env bind env = plusVarEnv env (cafAnalTopBinding env bind)
+    update_env bind env = plusNameEnv env (cafAnalTopBinding env bind)
 
 depSort :: [(StgTopBinding, FVs)] -> [(StgTopBinding, FVs)]
 depSort = concatMap get_binds . depAnal defs uses
@@ -77,13 +76,13 @@ depSort = concatMap get_binds . depAnal defs uses
 
 -- | Given CafInfos of dependencies and a top-level binding return CafInfos of
 -- Ids that the binding binds.
-cafAnalTopBinding :: VarEnv (Id, CafInfo) -> (StgTopBinding, FVs) -> VarEnv (Id, CafInfo)
+cafAnalTopBinding :: NameEnv (Id, CafInfo) -> (StgTopBinding, FVs) -> NameEnv (Id, CafInfo)
 
 cafAnalTopBinding _ (StgTopStringLit bndr _, _)
-  = unitVarEnv bndr (bndr, NoCafRefs)
+  = unitNameEnv (idName bndr) (bndr, NoCafRefs)
 
 cafAnalTopBinding env (StgTopLifted (StgNonRec bndr rhs), fvs)
-  = unitVarEnv bndr (bndr, caf_info)
+  = unitNameEnv (idName bndr) (bndr, caf_info)
   where
     caf_info
       | fvsHaveCafRefs env fvs || rhsIsCaf rhs
@@ -92,7 +91,7 @@ cafAnalTopBinding env (StgTopLifted (StgNonRec bndr rhs), fvs)
       = NoCafRefs
 
 cafAnalTopBinding env (StgTopLifted bndrs_@(StgRec bndrs), fvs)
-  = mkVarEnv (map (\b -> (b, (b, caf_info))) (bindersOf bndrs_))
+  = mkNameEnv (map (\b -> (idName b, (b, caf_info))) (bindersOf bndrs_))
   where
     caf_info
       | fvsHaveCafRefs env fvs || any (rhsIsCaf . snd) bndrs
@@ -108,12 +107,12 @@ rhsIsCaf (StgRhsClosure _ _ upd args _) = null args && isUpdatable upd
 -- these arguments.
 rhsIsCaf StgRhsCon{}                    = False
 
-fvsHaveCafRefs :: VarEnv (Id, CafInfo) -> FVs -> Bool
+fvsHaveCafRefs :: NameEnv (Id, CafInfo) -> FVs -> Bool
 fvsHaveCafRefs env fvs = any (fvHasCafRefs env) (dVarSetElems fvs)
 
-fvHasCafRefs :: VarEnv (Id, CafInfo) -> Var -> Bool
+fvHasCafRefs :: NameEnv (Id, CafInfo) -> Var -> Bool
 fvHasCafRefs env v = caf_info == MayHaveCafRefs
   where
-    caf_info = case lookupVarEnv env v of
+    caf_info = case lookupNameEnv env (idName v) of
       Nothing     -> idCafInfo v -- TODO check that this is really an imported name and not a bug!
       Just (_, c) -> c

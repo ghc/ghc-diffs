@@ -32,6 +32,7 @@ module ToIface
     , toIfaceLetBndr
     , toIfaceIdDetails
     , toIfaceIdInfo
+    , toIfaceIdCafInfo
     , toIfUnfolding
     , toIfaceOneShot
     , toIfaceTickish
@@ -408,7 +409,7 @@ toIfaceIdDetails other = pprTrace "toIfaceIdDetails" (ppr other)
 
 toIfaceIdInfo :: IdInfo -> [IfaceInfoItem]
 toIfaceIdInfo id_info
-  = catMaybes [arity_hsinfo, caf_hsinfo, strict_hsinfo,
+  = catMaybes [arity_hsinfo, strict_hsinfo,
                inline_hsinfo,  unfold_hsinfo, levity_hsinfo]
                -- NB: strictness and arity must appear in the list before unfolding
                -- See TcIface.tcUnfolding
@@ -417,12 +418,6 @@ toIfaceIdInfo id_info
     arity_info = arityInfo id_info
     arity_hsinfo | arity_info == 0 = Nothing
                  | otherwise       = Just (HsArity arity_info)
-
-    ------------ Caf Info --------------
-    caf_info   = cafInfo id_info
-    caf_hsinfo = case caf_info of
-                   NoCafRefs -> Just HsNoCafRefs
-                   _other    -> Nothing
 
     ------------  Strictness  --------------
         -- No point in explicitly exporting TopSig
@@ -446,6 +441,10 @@ toIfaceIdInfo id_info
 toIfaceJoinInfo :: Maybe JoinArity -> IfaceJoinInfo
 toIfaceJoinInfo (Just ar) = IfaceJoinPoint ar
 toIfaceJoinInfo Nothing   = IfaceNotJoinPoint
+
+toIfaceIdCafInfo :: CafInfo -> IfaceCafInfo
+toIfaceIdCafInfo MayHaveCafRefs = IfMayHaveCafRefs
+toIfaceIdCafInfo NoCafRefs = IfNoCafRefs
 
 --------------------------
 toIfUnfolding :: Bool -> Unfolding -> Maybe IfaceInfoItem

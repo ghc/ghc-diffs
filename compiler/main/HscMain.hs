@@ -95,7 +95,7 @@ import CoreTidy         ( tidyExpr )
 import Type             ( Type )
 import {- Kind parts of -} Type         ( Kind )
 import CoreLint         ( lintInteractiveExpr )
-import VarEnv           ( emptyTidyEnv, VarEnv )
+import VarEnv           ( emptyTidyEnv )
 import Panic
 import ConLike
 import Control.Concurrent
@@ -148,7 +148,6 @@ import DynamicLoading   ( initializePlugins )
 import VarEnv           ( dVarEnvElts )
 import UniqDFM          ( alwaysUnsafeUfmToUdfm )
 import IdInfo           ( CafInfo (..) )
-import IfaceSyn
 
 import DynFlags
 import ErrUtils
@@ -1351,7 +1350,7 @@ hscGenHardCode hsc_env cgguts mod_summary mod_iface output_filename = do
 
             ----------- Update iface with CafInfos ----------------
 
-            let mod_iface' = updateModIface mod_iface caf_infos
+            let mod_iface' = updateIfaceCafInfos mod_iface caf_infos
             -- Overwrite the interface wile with CAF infos. Note that we can't
             -- use hscWriteIface here: if we're generating code for Dyn way we
             -- need to update the Dyn way iface file, otierwise the normal iface
@@ -1380,37 +1379,6 @@ hscGenHardCode hsc_env cgguts mod_summary mod_iface output_filename = do
                   foreign_stubs foreign_files dependencies rawcmms1
             return (output_filename, stub_c_exists, foreign_fps)
 
-
-updateModIface :: ModIface -> VarEnv (Id, CafInfo) -> ModIface
-updateModIface mod_iface0 caf_infos0 =
-    -- Update CafInfos of ids in the ModIface. Note that some ids may not be in
-    -- the iface.
-    let
-      update_id_caf_info mod_iface id caf_info =
-        mod_iface{ mi_decls = update_decls id caf_info (mi_decls mod_iface) }
-
-      update_decls :: Var -> CafInfo -> [(Fingerprint, IfaceDecl)] -> [(Fingerprint, IfaceDecl)]
-
-      update_decls _ _ [] = []
-
-      update_decls var caf_info ((fp, IfaceId ifName ifType ifIdDetails ifIdInfo) : rest)
-        | ifName == idName var
-        = (fp, IfaceId ifName ifType ifIdDetails (update_if_id_info caf_info ifIdInfo)) : rest
-
-      update_decls var caf_info (e : rest)
-        = e : update_decls var caf_info rest
-
-      update_if_id_info :: CafInfo -> [IfaceInfoItem] -> [IfaceInfoItem]
-      update_if_id_info caf_info infos0 =
-        let
-          infos = filter (\case HsNoCafRefs -> False; _ -> True) infos0
-        in
-          case caf_info of
-            MayHaveCafRefs -> infos
-            NoCafRefs -> HsNoCafRefs : infos
-    in
-      foldr (\(id, caf_info) mod_iface -> update_id_caf_info mod_iface id caf_info)
-            mod_iface0 (dVarEnvElts (alwaysUnsafeUfmToUdfm caf_infos0))
 
 hscInteractive :: HscEnv
                -> CgGuts
@@ -1472,7 +1440,7 @@ doCodeGen   :: HscEnv -> Module -> [TyCon]
             -> CollectedCCs
             -> [StgTopBinding]
             -> HpcInfo
-            -> IO (Stream IO CmmGroup (), VarEnv (Id, CafInfo))
+            -> IO (Stream IO CmmGroup (), NameEnv (Id, CafInfo))
          -- Note we produce a 'Stream' of CmmGroups, so that the
          -- backend can be run incrementally.  Otherwise it generates all
          -- the C-- up front, which has a significant space cost.

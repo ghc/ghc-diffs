@@ -13,6 +13,8 @@ module MkIface (
         mkIface,        -- Build a ModIface from a ModGuts,
                         -- including computing version information
 
+        updateIfaceCafInfos,
+
         mkIfaceTc,
 
         writeIfaceFile, -- Write the interface file
@@ -70,6 +72,7 @@ import FlagChecker
 
 import DsUsage ( mkUsageInfo, mkUsedNames, mkDependencies )
 import Id
+import IdInfo
 import Annotations
 import CoreSyn
 import Class
@@ -120,6 +123,7 @@ import Data.IORef
 import System.Directory
 import System.FilePath
 import Plugins ( PluginRecompile(..), Plugin(..), LoadedPlugin(..))
+import Data.Bifunctor (second)
 
 --Qualified import so we can define a Semigroup instance
 -- but it doesn't clash with Outputable.<>
@@ -365,6 +369,24 @@ mkIface_ hsc_env maybe_old_fingerprint
      deliberatelyOmitted x = panic ("Deliberately omitted: " ++ x)
 
      ifFamInstTcName = ifFamInstFam
+
+
+-- -----------------------------------------------------------------------------
+-- Update iface with given CafInfos
+
+updateIfaceCafInfos :: ModIface -> NameEnv (a, CafInfo) -> ModIface
+updateIfaceCafInfos mod_iface0 caf_infos =
+    mod_iface0{ mi_decls = map (second update_caf_info) (mi_decls mod_iface0) }
+  where
+    update_caf_info :: IfaceDecl -> IfaceDecl
+    update_caf_info id@(IfaceId name ty id_details id_info _)
+      | Just (_, caf_info) <- lookupNameEnv caf_infos name 
+      = IfaceId name ty id_details id_info (toIfaceIdCafInfo caf_info)
+      | otherwise
+      = id
+    update_caf_info id
+      = id
+
 
 -----------------------------
 writeIfaceFile :: DynFlags -> FilePath -> ModIface -> IO ()
@@ -1594,7 +1616,8 @@ idToIfaceDecl id
   = IfaceId { ifName      = getName id,
               ifType      = toIfaceType (idType id),
               ifIdDetails = toIfaceIdDetails (idDetails id),
-              ifIdInfo    = toIfaceIdInfo (idInfo id) }
+              ifIdInfo    = toIfaceIdInfo (idInfo id),
+              ifIdCafInfo = toIfaceIdCafInfo (idCafInfo id) }
 
 --------------------------
 dataConToIfaceDecl :: DataCon -> IfaceDecl
@@ -1602,7 +1625,8 @@ dataConToIfaceDecl dataCon
   = IfaceId { ifName      = getName dataCon,
               ifType      = toIfaceType (dataConUserType dataCon),
               ifIdDetails = IfVanillaId,
-              ifIdInfo    = [] }
+              ifIdInfo    = [],
+              ifIdCafInfo = IfMayHaveCafRefs }
 
 --------------------------
 coAxiomToIfaceDecl :: CoAxiom br -> IfaceDecl

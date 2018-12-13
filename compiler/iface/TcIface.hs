@@ -634,10 +634,11 @@ tc_iface_decl :: Maybe Class  -- ^ For associated type/data family declarations
               -> IfaceDecl
               -> IfL TyThing
 tc_iface_decl _ ignore_prags (IfaceId {ifName = name, ifType = iface_type,
-                                       ifIdDetails = details, ifIdInfo = info})
+                                       ifIdDetails = details, ifIdInfo = info,
+                                       ifIdCafInfo = caf_info })
   = do  { ty <- tcIfaceType iface_type
         ; details <- tcIdDetails ty details
-        ; info <- tcIdInfo ignore_prags TopLevel name ty info
+        ; info <- tcIdInfo ignore_prags TopLevel name ty info (tcIfaceCafInfo caf_info)
         ; return (AnId (mkGlobalId details name ty info)) }
 
 tc_iface_decl _ _ (IfaceData {ifName = tc_name,
@@ -1336,7 +1337,7 @@ tcIfaceExpr (IfaceLet (IfaceNonRec (IfLetBndr fs ty info ji) rhs) body)
   = do  { name    <- newIfaceName (mkVarOccFS fs)
         ; ty'     <- tcIfaceType ty
         ; id_info <- tcIdInfo False {- Don't ignore prags; we are inside one! -}
-                              NotTopLevel name ty' info
+                              NotTopLevel name ty' info MayHaveCafRefs
         ; let id = mkLocalIdOrCoVarWithInfo name ty' id_info
                      `asJoinId_maybe` tcJoinInfo ji
         ; rhs' <- tcIfaceExpr rhs
@@ -1357,7 +1358,7 @@ tcIfaceExpr (IfaceLet (IfaceRec pairs) body)
    tc_pair (IfLetBndr _ _ info _, rhs) id
      = do { rhs' <- tcIfaceExpr rhs
           ; id_info <- tcIdInfo False {- Don't ignore prags; we are inside one! -}
-                                NotTopLevel (idName id) (idType id) info
+                                NotTopLevel (idName id) (idType id) info MayHaveCafRefs
           ; return (setIdInfo id id_info, rhs') }
 
 tcIfaceExpr (IfaceTick tickish expr) = do
@@ -1376,6 +1377,11 @@ tcIfaceTickish :: IfaceTickish -> IfM lcl (Tickish Id)
 tcIfaceTickish (IfaceHpcTick modl ix)   = return (HpcTick modl ix)
 tcIfaceTickish (IfaceSCC  cc tick push) = return (ProfNote cc tick push)
 tcIfaceTickish (IfaceSource src name)   = return (SourceNote src name)
+
+-------------------------
+tcIfaceCafInfo :: IfaceCafInfo -> CafInfo
+tcIfaceCafInfo IfNoCafRefs = NoCafRefs
+tcIfaceCafInfo IfMayHaveCafRefs = MayHaveCafRefs
 
 -------------------------
 tcIfaceLit :: Literal -> IfL Literal
@@ -1454,19 +1460,19 @@ tcIdDetails _ (IfRecSelId tc naughty)
     tyThingPatSyn (AConLike (PatSynCon ps)) = ps
     tyThingPatSyn _ = panic "tcIdDetails: expecting patsyn"
 
-tcIdInfo :: Bool -> TopLevelFlag -> Name -> Type -> [IfaceInfoItem] -> IfL IdInfo
-tcIdInfo ignore_prags toplvl name ty info = do
+tcIdInfo :: Bool -> TopLevelFlag -> Name -> Type -> [IfaceInfoItem] -> CafInfo -> IfL IdInfo
+tcIdInfo ignore_prags toplvl name ty info caf_info = do
     lcl_env <- getLclEnv
     -- Set the CgInfo to something sensible but uninformative before
     -- we start; default assumption is that it has CAFs
-    let init_info | if_boot lcl_env = vanillaIdInfo `setUnfoldingInfo` BootUnfolding
-                  | otherwise       = vanillaIdInfo
+    let info0 = vanillaIdInfo `setCafInfo` caf_info
+    let init_info | if_boot lcl_env = info0 `setUnfoldingInfo` BootUnfolding
+                  | otherwise       = info0
     if ignore_prags
         then return init_info
         else foldlM tcPrag init_info info
   where
     tcPrag :: IdInfo -> IfaceInfoItem -> IfL IdInfo
-    tcPrag info HsNoCafRefs        = return (info `setCafInfo`   NoCafRefs)
     tcPrag info (HsArity arity)    = return (info `setArityInfo` arity)
     tcPrag info (HsStrictness str) = return (info `setStrictnessInfo` str)
     tcPrag info (HsInline prag)    = return (info `setInlinePragInfo` prag)

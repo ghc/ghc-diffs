@@ -12,7 +12,7 @@ module IfaceSyn (
         IfaceConDecl(..), IfaceConDecls(..), IfaceEqSpec,
         IfaceExpr(..), IfaceAlt, IfaceLetBndr(..), IfaceJoinInfo(..),
         IfaceBinding(..), IfaceConAlt(..),
-        IfaceIdDetails(..), IfaceUnfolding(..),
+        IfaceIdDetails(..), IfaceCafInfo(..), IfaceUnfolding(..),
         IfaceInfoItem(..), IfaceRule(..), IfaceAnnotation(..), IfaceAnnTarget,
         IfaceClsInst(..), IfaceFamInst(..), IfaceTickish(..),
         IfaceClassBody(..),
@@ -110,7 +110,9 @@ data IfaceDecl
   = IfaceId { ifName      :: IfaceTopBndr,
               ifType      :: IfaceType,
               ifIdDetails :: IfaceIdDetails,
-              ifIdInfo    :: [IfaceInfoItem] }
+              ifIdInfo    :: [IfaceInfoItem],
+              ifIdCafInfo :: IfaceCafInfo
+              }
 
   | IfaceData { ifName       :: IfaceTopBndr,   -- Type constructor
                 ifBinders    :: [IfaceTyConBinder],
@@ -339,8 +341,11 @@ data IfaceInfoItem
   | HsInline        InlinePragma
   | HsUnfold        Bool             -- True <=> isStrongLoopBreaker is true
                     IfaceUnfolding   -- See Note [Expose recursive functions]
-  | HsNoCafRefs
   | HsLevity                         -- Present <=> never levity polymorphic
+
+data IfaceCafInfo
+  = IfMayHaveCafRefs
+  | IfNoCafRefs
 
 -- NB: Specialisations and rules come in separately and are
 -- only later attached to the Id.  Partial reason: some are orphans.
@@ -1255,7 +1260,6 @@ instance Outputable IfaceInfoItem where
   ppr (HsInline prag)       = text "Inline:" <+> ppr prag
   ppr (HsArity arity)       = text "Arity:" <+> int arity
   ppr (HsStrictness str) = text "Strictness:" <+> pprIfaceStrictSig str
-  ppr HsNoCafRefs           = text "HasNoCafRefs"
   ppr HsLevity              = text "Never levity-polymorphic"
 
 instance Outputable IfaceJoinInfo where
@@ -1625,11 +1629,23 @@ details.
 
 -}
 
+-- TODO (osa): Orphan OK?
+instance Binary IfaceCafInfo where
+    put_ bh IfNoCafRefs = putByte bh 0
+    put_ bh IfMayHaveCafRefs = putByte bh 1
+
+    get bh = do
+        h <- getByte bh
+        case h of
+          0 -> return IfNoCafRefs
+          1 -> return IfMayHaveCafRefs
+          _ -> panic ("Unknown IfCafInfo tag: " ++ show h)
+
 instance Binary IfaceDecl where
-    put_ bh (IfaceId name ty details idinfo) = do
+    put_ bh (IfaceId name ty details idinfo caf_info) = do
         putByte bh 0
         putIfaceTopBndr bh name
-        lazyPut bh (ty, details, idinfo)
+        lazyPut bh (ty, details, idinfo, caf_info)
         -- See Note [Lazy deserialization of IfaceId]
 
     put_ bh (IfaceData a1 a2 a3 a4 a5 a6 a7 a8 a9) = do
@@ -1720,9 +1736,9 @@ instance Binary IfaceDecl where
         h <- getByte bh
         case h of
             0 -> do name    <- get bh
-                    ~(ty, details, idinfo) <- lazyGet bh
+                    ~(ty, details, idinfo, caf_info) <- lazyGet bh
                     -- See Note [Lazy deserialization of IfaceId]
-                    return (IfaceId name ty details idinfo)
+                    return (IfaceId name ty details idinfo caf_info)
             1 -> error "Binary.get(TyClDecl): ForeignType"
             2 -> do a1  <- getIfaceTopBndr bh
                     a2  <- get bh
@@ -2016,7 +2032,6 @@ instance Binary IfaceInfoItem where
     put_ bh (HsStrictness ab)     = putByte bh 1 >> put_ bh ab
     put_ bh (HsUnfold lb ad)      = putByte bh 2 >> put_ bh lb >> put_ bh ad
     put_ bh (HsInline ad)         = putByte bh 3 >> put_ bh ad
-    put_ bh HsNoCafRefs           = putByte bh 4
     put_ bh HsLevity              = putByte bh 5
     get bh = do
         h <- getByte bh
@@ -2027,7 +2042,6 @@ instance Binary IfaceInfoItem where
                     ad <- get bh
                     return (HsUnfold lb ad)
             3 -> liftM HsInline $ get bh
-            4 -> return HsNoCafRefs
             _ -> return HsLevity
 
 instance Binary IfaceUnfolding where
