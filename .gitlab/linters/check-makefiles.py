@@ -13,7 +13,7 @@ import os
 import json
 import re
 import subprocess
-import textwrap
+from linter import lint_failure
 
 failed = 0
 base_commit = sys.argv[1]
@@ -26,17 +26,9 @@ for path in files.split('\n'):
             for lineno, line in enumerate(f):
                 if '--interactive' in line:
                     failed = 1
-                    msg = '''
-                    {path}:
-
-                           |
-                    {lineno:5d}  |  {line}
-                           |
-
-                       Warning: Use `$(TEST_HC_OPTS_INTERACTIVE)` instead of
-                               `--interactive -ignore-dot-ghci -v0`.
-                    '''.format(path=path, lineno=lineno, line=line[:-1])
-
-                    print(textwrap.dedent(msg))
+                    msg = "Warning: Use `$(TEST_HC_OPTS_INTERACTIVE)` instead of `--interactive -ignore-dot-ghci -v0`."
+                    lint_failure(file=path, line_no=lineno,
+                                 line_content=line[:-1],
+                                 message=msg)
 
 sys.exit(failed)
