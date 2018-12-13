@@ -113,6 +113,16 @@ validate-x86_64-darwin:
 validate-x86_64-linux-deb9:
   extends: .validate-linux
   image: ghcci/x86_64-linux-deb9:0.1
+  artifacts:
+    when: always
+  cache:
+    key: linux-x86_64-deb9
+
+validate-x86_64-linux-deb9-llvm:
+  extends: .validate-linux
+  image: ghcci/x86_64-linux-deb9:0.1
+  variables:
+    BUILD_FLAVOUR: perf-llvm
   cache:
     key: linux-x86_64-deb9
 

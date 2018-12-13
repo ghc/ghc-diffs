@@ -25,13 +25,6 @@ aliases:
       name: Boot
       command: |
         ./boot
-
-        cat <<EOF >> mk/build.mk
-        BuildFlavour=$BUILD_FLAVOUR
-        ifneq "\$(BuildFlavour)" ""
-        include mk/flavours/\$(BuildFlavour).mk
-        endif
-        EOF
   - &set_git_identity
       run:
         name: Set Git Identity

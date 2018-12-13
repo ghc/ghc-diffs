@@ -22,6 +22,13 @@ BUILD_SPHINX_HTML=$BUILD_SPHINX_HTML
 BUILD_SPHINX_PDF=$BUILD_SPHINX_PDF
 BeConservative=YES
 INTEGER_LIBRARY=$INTEGER_LIBRARY
+
+cat <<EOF >> mk/build.mk
+BuildFlavour=$BUILD_FLAVOUR
+ifneq "\$(BuildFlavour)" ""
+include mk/flavours/\$(BuildFlavour).mk
+endif
+EOF
 EOF
 
 case "$(uname)" in
