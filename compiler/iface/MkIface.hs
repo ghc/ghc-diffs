@@ -380,7 +380,7 @@ updateIfaceCafInfos mod_iface0 caf_infos =
   where
     update_caf_info :: IfaceDecl -> IfaceDecl
     update_caf_info id@(IfaceId name ty id_details id_info _)
-      | Just (_, caf_info) <- lookupNameEnv caf_infos name 
+      | Just (_, caf_info) <- lookupNameEnv caf_infos name
       = IfaceId name ty id_details id_info (toIfaceIdCafInfo caf_info)
       | otherwise
       = id

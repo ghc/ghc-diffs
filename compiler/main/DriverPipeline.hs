@@ -1108,9 +1108,10 @@ runPhase (HscOut src_flavour mod_name result) _ dflags = do
               -> do output_fn <- phaseOutputFilename next_phase
 
                     PipeState{hsc_env=hsc_env'} <- getPipeState
+                    let mod_summary' = mod_summary{ ms_location = location }
 
                     (outputFilename, mStub, foreign_files) <- liftIO $
-                      hscGenHardCode hsc_env' cgguts mod_summary mod_iface output_fn
+                      hscGenHardCode hsc_env' cgguts mod_summary' mod_iface output_fn
                     stub_o <- liftIO (mapM (compileStub hsc_env') mStub)
                     foreign_os <- liftIO $
                       mapM (uncurry (compileForeign hsc_env')) foreign_files
