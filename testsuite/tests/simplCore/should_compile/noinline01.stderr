@@ -67,10 +67,10 @@ Noinline01.$trModule :: GHC.Types.Module
 
 ==================== CAF analysis: ====================
 [(Noinline01.f, NoCafRefs), (Noinline01.g, MayHaveCafRefs),
- (Noinline01.$trModule, MayHaveCafRefs),
- (Noinline01.$trModule1, MayHaveCafRefs),
+ (Noinline01.$trModule, NoCafRefs),
+ (Noinline01.$trModule1, NoCafRefs),
  (Noinline01.$trModule2, NoCafRefs),
- (Noinline01.$trModule3, MayHaveCafRefs),
+ (Noinline01.$trModule3, NoCafRefs),
  (Noinline01.$trModule4, NoCafRefs)]
 
 
