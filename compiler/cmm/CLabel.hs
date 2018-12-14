@@ -1456,8 +1456,8 @@ isAliasToLocalOrIntoThisModule alias lab
  | otherwise = pprTrace "isAliasToLocal" (ppr alias <+> ppr lab) False
    where staticClosureLabel = isStaticClosureLabel lab
 {-
-   Note [emit-time elimination of static indirections]
-
+Note [emit-time elimination of static indirections]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 As described in #15155, certain static values are repesentaionally
 equivalent, e.g. 'cast'ed values (when created by 'newtype' wrappers).
 Formerly we created static indirections for these (IND_STATIC), which
