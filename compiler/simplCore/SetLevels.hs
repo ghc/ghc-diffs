@@ -390,8 +390,8 @@ lvlExpr env (_, AnnCase scrut case_bndr ty alts)
 lvlNonTailExpr :: LevelEnv             -- Context
                -> CoreExprWithFVs      -- Input expression
                -> LvlM LevelledExpr    -- Result expression
-lvlNonTailExpr env expr
-  = lvlExpr (placeJoinCeiling env) expr
+lvlNonTailExpr env
+  = lvlExpr (placeJoinCeiling env)
 
 -------------------------------------------
 lvlApp :: LevelEnv
