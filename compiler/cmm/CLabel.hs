@@ -1441,21 +1441,20 @@ pprDynamicLinkerAsmLabel platform dllInfo lbl =
 isAliasToLocalOrIntoThisModule :: CLabel -> CLabel -> Bool
 isAliasToLocalOrIntoThisModule alias lab
  | Just nam <- hasHaskellName lab
- , isStaticClosureLabel lab
+ , staticClosureLabel
  , isExternalName nam
  , Just mod <- nameModule_maybe nam
  , Just anam <- hasHaskellName alias
  , Just thismod <- nameModule_maybe anam
  = thismod == mod
 
-isAliasToLocalOrIntoThisModule _ lab
  | Just nam <- hasHaskellName lab
- , isStaticClosureLabel lab || pprTrace "isAliasToLocal?" (ppr lab) False
+ , staticClosureLabel || pprTrace "isAliasToLocal?" (ppr lab) False
  , isInternalName nam
  = True
 
-isAliasToLocalOrIntoThisModule indi new = pprTrace "isAliasToLocal" (ppr indi <+> ppr new) False
-
+ | otherwise = pprTrace "isAliasToLocal" (ppr alias <+> ppr lab) False
+   where staticClosureLabel = isStaticClosureLabel lab
 {-
    Note [emit-time elimination of static indirections]
 
