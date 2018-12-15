@@ -61,7 +61,7 @@ genLlvmData (_, Statics alias [CmmStaticLit (CmmLabel lbl), CmmStaticLit ind, _,
 
         aliasDef = LMGlobalVar label tyAlias link Nothing Nothing Alias
         -- we don't know the type of the indirectee here
-        indType = error "will be filled by 'aliasify', later"
+        indType = panic "will be filled by 'aliasify', later"
         orig     = LMStaticPointer $ LMGlobalVar label' indType link' Nothing Nothing Alias
 
     pure ([LMGlobal aliasDef $ Just orig], [tyAlias])
