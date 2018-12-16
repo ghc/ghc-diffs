@@ -106,7 +106,9 @@ validate-x86_64-darwin:
     - PATH="`pwd`/toolchain/bin:$PATH"
       # Disable sphinx PDF output as MacTeX apparently doesn't provide xelatex
     - echo "BUILD_SPHINX_PDF=NO" >> mk/build.mk
+    - $CC -v
   after_script:
+    - cat config.log
     - cp -Rf $HOME/.cabal cabal-cache
   artifacts:
     when: always
