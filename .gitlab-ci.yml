@@ -95,7 +95,6 @@ validate-x86_64-darwin:
     MACOSX_DEPLOYMENT_TARGET: "10.7"
     # Only Sierra and onwards supports clock_gettime. See #12858
     ac_cv_func_clock_gettime: "no"
-    CC: "/usr/local/opt/llvm/bin/clang-7"
   before_script:
     - python .gitlab/fix-submodules.py
     - git submodule sync --recursive
@@ -104,6 +103,7 @@ validate-x86_64-darwin:
 
     - bash .gitlab/darwin-init.sh
     - PATH="`pwd`/toolchain/bin:$PATH"
+    - export CC=/usr/local/opt/llvm/bin/clang-7
       # Disable sphinx PDF output as MacTeX apparently doesn't provide xelatex
     - echo "BUILD_SPHINX_PDF=NO" >> mk/build.mk
   after_script:
