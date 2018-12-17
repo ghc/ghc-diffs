@@ -357,9 +357,9 @@ instance OutputableBndr Var where
   bndrIsJoin_maybe = isJoinId_maybe
 
 instance Outputable b => OutputableBndr (TaggedBndr b) where
-  pprBndr _    b = ppr b   -- Simple
-  pprInfixOcc  b = ppr b
-  pprPrefixOcc b = ppr b
+  pprBndr _    = ppr   -- Simple
+  pprInfixOcc  = ppr
+  pprPrefixOcc = ppr
   bndrIsJoin_maybe (TB b _) = isJoinId_maybe b
 
 pprCoreBinder :: BindingSite -> Var -> SDoc
