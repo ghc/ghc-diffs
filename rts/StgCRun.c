@@ -405,9 +405,13 @@ StgRunIsImplementedInAssembler(void)
         "movq %%xmm15,136(%%rax)\n\t"
 #endif
 
+#if !defined(darwin_HOST_OS)
         /*
          * Let the unwinder know where we saved the registers
          * See Note [Unwinding foreign exports on x86-64].
+         *
+         * N.B. We don't support unwinding on Darwin due to
+         * various toolchain insanity.
          */
         ".cfi_def_cfa rsp, 0\n\t"
         ".cfi_offset rbx, %c2\n\t"
@@ -440,6 +444,7 @@ StgRunIsImplementedInAssembler(void)
 #error "RSP_DELTA too big"
 #endif
           "\n\t"
+#endif /* !defined(darwin_HOST_OS) */
 
         /*
          * Set BaseReg
