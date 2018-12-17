@@ -630,8 +630,11 @@ runPipeline stop_phase hsc_env0 (input_fn, mb_phase)
                    (text "Running the pipeline again for -dynamic-too")
                let dflags' = dynamicTooMkDynamicDynFlags dflags
                hsc_env' <- newHscEnv dflags'
+               let maybe_loc' = fmap (\l -> l{ ml_hi_file  = ml_hi_file l  -<.> hiSuf dflags'
+                                             , ml_obj_file = ml_obj_file l -<.> objectSuf dflags'
+                                             }) maybe_loc
                _ <- runPipeline' start_phase hsc_env' env input_fn
-                                 maybe_loc foreign_os
+                                 maybe_loc' foreign_os
                return ()
          return r
 
