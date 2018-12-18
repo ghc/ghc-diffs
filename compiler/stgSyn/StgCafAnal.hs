@@ -1,3 +1,25 @@
+{-
+Note [CafInfo analysis]
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Some history: before this pass CafInfo of bindings were computed in TidyPgm.
+After that any later passes (CorePrep, CoreToStg, UnariseStg, StgCse, ...) had
+to preserve this information otherwise the CafInfos written to the interface
+files would be inconsistent with the actual CafInfos (this caused #15038). To
+avoid this we had a lot of code in CorePrep (to avoid floating things out and
+invalidating computed CafInfos by making more things CAFFY), and we had sanity
+checks in CoreToStg.
+
+With this pass we now do the analysis at a stage where we know the CafInfos will
+certainly not change: right before Cmm generation (we don't do transformations
+in Cmm that change CafInfos). With this we no longer have to preserve CafInfos
+in Core or STG passes, and lots of hacks, notes and sanity checks are gone. The
+cost is that in non-batch mode (when building only one module) we keep the
+interface in memory longer than before.
+
+See comments around stgCafAnal below for an overview of the new pass.
+-}
+
 module StgCafAnal (stgCafAnal) where
 
 import GhcPrelude

@@ -223,6 +223,11 @@ data HscStatus
     | HscUpdateBoot
     | HscUpdateSig
     | HscRecomp CgGuts ModSummary !ModIface
+        -- ModIface here because when generating code (e.g. no -fno-code) we do
+        -- CafInfo analysis right before codegen (on final STG) and generate
+        -- interface files with those CafInfos, in hscGenHardCode (with
+        -- -fno-code interface files don't have CafInfos).
+        -- See Note [CafInfo analysis] in StgCafAnal.
 
 -- -----------------------------------------------------------------------------
 -- The Hsc monad: Passing an environment and warning state

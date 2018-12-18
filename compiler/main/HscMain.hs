@@ -1350,6 +1350,7 @@ hscGenHardCode hsc_env cgguts mod_summary mod_iface output_filename = do
 
             ----------- Generate iface with CafInfos --------------
 
+            -- See Note [CafInfo analysis] in StgCafAnal.
             let mod_iface' = updateIfaceCafInfos mod_iface caf_infos
             let ifaceFile = ml_hi_file (ms_location mod_summary)
             writeIfaceFile dflags ifaceFile mod_iface'
