@@ -1336,8 +1336,7 @@ tcIfaceExpr (IfaceCase scrut case_bndr alts)  = do
 tcIfaceExpr (IfaceLet (IfaceNonRec (IfLetBndr fs ty info ji) rhs) body)
   = do  { name    <- newIfaceName (mkVarOccFS fs)
         ; ty'     <- tcIfaceType ty
-        ; id_info <- tcIdInfo False {- Don't ignore prags; we are inside one! -}
-                              NotTopLevel name ty' info MayHaveCafRefs
+        ; id_info <- tcLocalIdInfo name ty' info
         ; let id = mkLocalIdOrCoVarWithInfo name ty' id_info
                      `asJoinId_maybe` tcJoinInfo ji
         ; rhs' <- tcIfaceExpr rhs
@@ -1357,8 +1356,7 @@ tcIfaceExpr (IfaceLet (IfaceRec pairs) body)
           ; return (mkLocalIdOrCoVar name ty' `asJoinId_maybe` tcJoinInfo ji) }
    tc_pair (IfLetBndr _ _ info _, rhs) id
      = do { rhs' <- tcIfaceExpr rhs
-          ; id_info <- tcIdInfo False {- Don't ignore prags; we are inside one! -}
-                                NotTopLevel (idName id) (idType id) info MayHaveCafRefs
+          ; id_info <- tcLocalIdInfo (idName id) (idType id) info
           ; return (setIdInfo id id_info, rhs') }
 
 tcIfaceExpr (IfaceTick tickish expr) = do
@@ -1484,6 +1482,12 @@ tcIdInfo ignore_prags toplvl name ty info caf_info = do
            ; let info1 | lb        = info `setOccInfo` strongLoopBreaker
                        | otherwise = info
            ; return (info1 `setUnfoldingInfo` unf) }
+
+tcLocalIdInfo :: Name -> Type -> [IfaceInfoItem] -> IfL IdInfo
+tcLocalIdInfo name ty info =
+    tcIdInfo False {- Don't ignore prags; we are inside one! -}
+             NotTopLevel name ty info
+             MayHaveCafRefs {- More precise CafInfo will be computed before codegen -}
 
 tcJoinInfo :: IfaceJoinInfo -> Maybe JoinArity
 tcJoinInfo (IfaceJoinPoint ar) = Just ar
