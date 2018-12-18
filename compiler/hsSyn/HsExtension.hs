@@ -913,6 +913,7 @@ type ForallXHsWildCardBndrs(c :: * -> Constraint) (x :: *) (b :: *) =
 -- -------------------------------------
 
 type family XForAllTy        x
+type family XForAllFunTy     x
 type family XQualTy          x
 type family XTyVar           x
 type family XAppTy           x
@@ -939,6 +940,7 @@ type family XXType           x
 -- entry per extension point type family.
 type ForallXType (c :: * -> Constraint) (x :: *) =
        ( c (XForAllTy        x)
+       , c (XForAllFunTy     x)
        , c (XQualTy          x)
        , c (XTyVar           x)
        , c (XAppTy           x)

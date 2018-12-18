@@ -521,6 +521,16 @@ rnHsTyKi env ty@(HsForAllTy { hst_bndrs = tyvars, hst_body  = tau })
                              , hst_body =  tau' }
                 , fvs) } }
 
+rnHsTyKi env ty@(HsForAllFunTy { hst_bndrs = tyvars, hst_body = tau })
+  = do { -- TODO RGS: Validity checks?
+       ; checkPolyKinds env ty
+       ; bindLHsTyVarBndrs (rtke_ctxt env) (Just $ inTypeDoc ty)
+                           Nothing tyvars $ \ tyvars' ->
+    do { (tau', fvs) <- rnLHsTyKi env tau
+       ; pure ( HsForAllFunTy { hst_xforallfun = noExt, hst_bndrs = tyvars'
+                              , hst_body = tau' }
+              , fvs ) } }
+
 rnHsTyKi env ty@(HsQualTy { hst_ctxt = lctxt, hst_body = tau })
   = do { checkPolyKinds env ty  -- See Note [QualTy in kinds]
        ; (ctxt', fvs1) <- rnTyKiContext env lctxt
@@ -1074,6 +1084,10 @@ collectAnonWildCards lty = go lty
       HsExplicitListTy _ _ tys       -> gos tys
       HsExplicitTupleTy _ tys        -> gos tys
       HsForAllTy { hst_bndrs = bndrs
+                 , hst_body  = ty }  -> collectAnonWildCardsBndrs bndrs
+                                        `mappend` go ty
+      HsForAllFunTy
+                 { hst_bndrs = bndrs
                  , hst_body  = ty }  -> collectAnonWildCardsBndrs bndrs
                                         `mappend` go ty
       HsQualTy { hst_ctxt = ctxt
@@ -1827,6 +1841,9 @@ extract_lty t_or_k (dL->L _ ty) acc
       HsKindSig _ ty ki           -> extract_lty t_or_k ty $
                                      extract_lkind ki acc
       HsForAllTy { hst_bndrs = tvs, hst_body = ty }
+                                  -> extract_hs_tv_bndrs tvs acc $
+                                     extract_lty t_or_k ty emptyFKTV
+      HsForAllFunTy { hst_bndrs = tvs, hst_body = ty }
                                   -> extract_hs_tv_bndrs tvs acc $
                                      extract_lty t_or_k ty emptyFKTV
       HsQualTy { hst_ctxt = ctxt, hst_body = ty }

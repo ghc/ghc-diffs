@@ -678,6 +678,22 @@ tc_hs_type mode forall@(HsForAllTy { hst_bndrs = hs_tvs, hst_body = ty }) exp_ki
 
        ; return (mkForAllTys bndrs ty') }
 
+tc_hs_type mode forall@(HsForAllFunTy { hst_bndrs = hs_tvs, hst_body = ty })
+           exp_kind
+  = do { (tclvl, wanted, (tvs', ty'))
+           <- pushLevelAndCaptureConstraints $
+              bindExplicitTKBndrs_Skol hs_tvs $
+              tc_lhs_type mode ty exp_kind
+    -- Do not kind-generalise here!  See Note [Kind generalisation]
+    -- Why exp_kind?  See Note [Body kind of HsForAllTy]
+       ; let bndrs       = mkTyVarBinders Required tvs'
+             skol_info   = ForAllSkol (ppr forall)
+             m_telescope = Just (sep (map ppr hs_tvs))
+
+       ; emitResidualTvConstraint skol_info m_telescope tvs' tclvl wanted
+
+       ; pure (mkForAllTys bndrs ty') }
+
 tc_hs_type mode (HsQualTy { hst_ctxt = ctxt, hst_body = ty }) exp_kind
   | null (unLoc ctxt)
   = tc_lhs_type mode ty exp_kind

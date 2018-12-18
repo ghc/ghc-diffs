@@ -450,6 +450,38 @@ constraintsAllowed (TySynKindCtxt {})     = False
 constraintsAllowed (TyFamResKindCtxt {})  = False
 constraintsAllowed _ = True
 
+-- TODO RGS
+vdqAllowed :: UserTypeCtxt -> Bool
+-- Currently allowed in the kinds of types...
+vdqAllowed (KindSigCtxt {}) = True
+vdqAllowed (TySynCtxt {}) = True
+vdqAllowed (ThBrackCtxt {}) = True
+vdqAllowed (GhciCtxt {}) = True
+vdqAllowed (TyVarBndrKindCtxt {}) = True
+vdqAllowed (DataKindCtxt {}) = True
+vdqAllowed (TySynKindCtxt {}) = True
+vdqAllowed (TyFamResKindCtxt {}) = True
+-- ...but not in the types of terms.
+vdqAllowed (FunSigCtxt {}) = False
+vdqAllowed (InfSigCtxt {}) = False
+vdqAllowed (ExprSigCtxt {}) = False
+vdqAllowed (TypeAppCtxt {}) = False
+vdqAllowed (ConArgCtxt {}) = False
+vdqAllowed (PatSynCtxt {}) = False
+vdqAllowed (PatSigCtxt {}) = False
+vdqAllowed (RuleSigCtxt {}) = False
+vdqAllowed (ResSigCtxt {}) = False
+vdqAllowed (ForSigCtxt {}) = False
+vdqAllowed (DefaultDeclCtxt {}) = False
+vdqAllowed (InstDeclCtxt {}) = False -- TODO RGS: Is this legit?
+vdqAllowed (SpecInstCtxt {}) = False -- TODO RGS: Is this legit?
+vdqAllowed (GenSigCtxt {}) = False -- TODO RGS: Is this legit?
+vdqAllowed (ClassSCCtxt {}) = False -- TODO RGS: Is this legit?
+vdqAllowed (SigmaCtxt {}) = False
+vdqAllowed (DataTyCtxt {}) = False -- TODO RGS: Is this legit?
+vdqAllowed (DerivClauseCtxt {}) = False -- TODO RGS: Is this legit?
+-- All of the TODO RGSes above relate to class constraints
+
 ----------------------------------------
 check_type :: TidyEnv -> UserTypeCtxt -> Rank -> Type -> TcM ()
 -- The args say what the *type context* requires, independent
@@ -489,6 +521,20 @@ check_type env ctxt rank ty
                    (constraintTyErr env ty)
                 -- Reject forall (a :: Eq b => b). blah
                 -- In a kind signature we don't allow constraints
+
+        ; traceTc "RGS" (vcat
+            [ text "ty" <+> ppr ty
+            , text "tvbs" <+> ppr tvbs
+            , text "map binderArgFlag tvbs" <+> ppr (map binderArgFlag tvbs)
+            , text "map (isInvisibleArgFlag . binderArgFlag) tvbs"
+                <+> ppr (map (isInvisibleArgFlag . binderArgFlag) tvbs)
+            , text "ctxt" <+> pprUserTypeCtxt ctxt
+            , text "vdqAllowed ctxt" <+> ppr (vdqAllowed ctxt)
+            ])
+        ; checkTcM (all (isInvisibleArgFlag . binderArgFlag) tvbs
+                         || vdqAllowed ctxt)
+                   (illegalVDQTyErr env ty)
+                -- TODO RGS: VDQ validity checking
 
         ; check_valid_theta env' SigmaCtxt theta
                 -- Allow     type T = ?x::Int => Int -> Int
@@ -639,6 +685,15 @@ ubxArgTyErr env ty
 constraintTyErr :: TidyEnv -> Type -> (TidyEnv, SDoc)
 constraintTyErr env ty
   = (env, text "Illegal constraint in a kind:" <+> ppr_tidy env ty)
+
+illegalVDQTyErr :: TidyEnv -> Type -> (TidyEnv, SDoc)
+-- TODO RGS
+illegalVDQTyErr env ty =
+  (env, vcat
+  [ sep
+    [ text "Illegal visible, dependent quantification in the type of a term:"
+    , ppr_tidy env ty ]
+  , text "(GHC does not yet support this)" ] )
 
 {-
 Note [Liberal type synonyms]

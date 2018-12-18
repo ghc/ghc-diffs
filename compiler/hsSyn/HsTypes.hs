@@ -514,6 +514,12 @@ data HsType pass
       --         'ApiAnnotation.AnnDot','ApiAnnotation.AnnDarrow'
       -- For details on above see note [Api annotations] in ApiAnnotation
 
+  | HsForAllFunTy -- TODO RGS
+      { hst_xforallfun :: XForAllFunTy pass
+      , hst_bndrs      :: [LHsTyVarBndr pass]
+      , hst_body       :: LHsType pass
+      }
+
   | HsQualTy   -- See Note [HsType binders]
       { hst_xqual :: XQualTy pass
       , hst_ctxt  :: LHsContext pass       -- Context C => blah
@@ -688,6 +694,7 @@ instance Outputable NewHsTypeX where
 
 type instance XForAllTy        (GhcPass _) = NoExt
 type instance XQualTy          (GhcPass _) = NoExt
+type instance XForAllFunTy     (GhcPass _) = NoExt
 type instance XTyVar           (GhcPass _) = NoExt
 type instance XAppTy           (GhcPass _) = NoExt
 type instance XFunTy           (GhcPass _) = NoExt
@@ -1302,6 +1309,13 @@ pprHsForAll :: (OutputableBndrId (GhcPass p))
             => [LHsTyVarBndr (GhcPass p)] -> LHsContext (GhcPass p) -> SDoc
 pprHsForAll = pprHsForAllExtra Nothing
 
+-- TODO RGS
+pprHsForAllFun :: (OutputableBndrId (GhcPass p))
+               => [LHsTyVarBndr (GhcPass p)] -> SDoc
+pprHsForAllFun qtvs
+  | null qtvs = whenPprDebug (forAllLit <+> arrow)
+  | otherwise = forAllLit <+> interppSP qtvs <+> arrow
+
 -- | Version of 'pprHsForAll' that can also print an extra-constraints
 -- wildcard, e.g. @_ => a -> Bool@ or @(Show a, _) => a -> String@. This
 -- underscore will be printed when the 'Maybe SrcSpan' argument is a 'Just'
@@ -1318,7 +1332,7 @@ pprHsForAllExtra extra qtvs cxt
     pp_forall | null qtvs = whenPprDebug (forAllLit <> dot)
               | otherwise = forAllLit <+> interppSP qtvs <> dot
 
--- | Version of 'pprHsForall' or 'pprHsForallExtra' that will always print
+-- | Version of 'pprHsForAll' or 'pprHsForAllExtra' that will always print
 -- @forall.@ when passed @Just []@. Prints nothing if passed 'Nothing'
 pprHsExplicitForAll :: (OutputableBndrId (GhcPass p))
                => Maybe [LHsTyVarBndr (GhcPass p)] -> SDoc
@@ -1385,6 +1399,9 @@ ppr_mono_lty ty = ppr_mono_ty (unLoc ty)
 ppr_mono_ty :: (OutputableBndrId (GhcPass p)) => HsType (GhcPass p) -> SDoc
 ppr_mono_ty (HsForAllTy { hst_bndrs = tvs, hst_body = ty })
   = sep [pprHsForAll tvs noLHsContext, ppr_mono_lty ty]
+
+ppr_mono_ty (HsForAllFunTy { hst_bndrs = tvs, hst_body = ty })
+  = sep [pprHsForAllFun tvs, ppr_mono_lty ty]
 
 ppr_mono_ty (HsQualTy { hst_ctxt = ctxt, hst_body = ty })
   = sep [pprLHsContextAlways ctxt, ppr_mono_lty ty]
@@ -1458,6 +1475,7 @@ hsTypeNeedsParens :: PprPrec -> HsType pass -> Bool
 hsTypeNeedsParens p = go
   where
     go (HsForAllTy{})        = p >= funPrec
+    go (HsForAllFunTy{})     = p >= funPrec
     go (HsQualTy{})          = p >= funPrec
     go (HsBangTy{})          = p > topPrec
     go (HsRecTy{})           = False
@@ -1496,6 +1514,7 @@ lhsTypeHasLeadingPromotionQuote ty
     goL (L _ ty) = go ty
 
     go (HsForAllTy{})        = False
+    go (HsForAllFunTy{})     = False
     go (HsQualTy{ hst_ctxt = ctxt, hst_body = body})
       | L _ (c:_) <- ctxt    = goL c
       | otherwise            = goL body

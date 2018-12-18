@@ -1863,6 +1863,12 @@ ctype   :: { LHsType GhcPs }
                                                            , hst_xforall = noExt
                                                            , hst_body = $4 })
                                                [mu AnnForall $1, mj AnnDot $3] }
+        | 'forall' tv_bndrs '->' ctype  {% hintExplicitForall (getLoc $1) *> -- TODO RGS: Validity checks?
+                                           ams (sLL $1 $> $
+                                                HsForAllFunTy { hst_bndrs = $2
+                                                              , hst_xforallfun = noExt
+                                                              , hst_body = $4 })
+                                               [mu AnnForall $1,mj AnnRarrow $3] }
         | context '=>' ctype          {% addAnnotation (gl $1) (toUnicodeAnn AnnDarrow $2) (gl $2)
                                          >> return (sLL $1 $> $
                                             HsQualTy { hst_ctxt = $1
@@ -1890,6 +1896,14 @@ ctypedoc :: { LHsType GhcPs }
                                                             , hst_xforall = noExt
                                                             , hst_body = $4 })
                                                 [mu AnnForall $1,mj AnnDot $3] }
+        | 'forall' tv_bndrs '->' ctypedoc
+                                         {% hintExplicitForall (getLoc $1) *> -- TODO RGS: Validity checks?
+                                            ams (sLL $1 $> $
+                                                 HsForAllFunTy { hst_bndrs = $2
+                                                               , hst_xforallfun = noExt
+                                                               , hst_body = $4 })
+                                                [mu AnnForall $1,mj AnnRarrow $3] }
+        -- TODO RGS: What about Haddocks?
         | context '=>' ctypedoc       {% addAnnotation (gl $1) (toUnicodeAnn AnnDarrow $2) (gl $2)
                                          >> return (sLL $1 $> $
                                             HsQualTy { hst_ctxt = $1
