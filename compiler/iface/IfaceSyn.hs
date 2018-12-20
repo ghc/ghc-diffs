@@ -346,6 +346,7 @@ data IfaceInfoItem
 data IfaceCafInfo
   = IfMayHaveCafRefs
   | IfNoCafRefs
+  deriving (Eq)
 
 -- NB: Specialisations and rules come in separately and are
 -- only later attached to the Id.  Partial reason: some are orphans.
@@ -892,20 +893,25 @@ pprIfaceDecl _ (IfacePatSyn { ifName = name,
             && not (null prov_ctxt && isEmpty dflags ex_msg)
 
 pprIfaceDecl ss (IfaceId { ifName = var, ifType = ty,
-                              ifIdDetails = details, ifIdInfo = info })
+                              ifIdDetails = details, ifIdInfo = info,
+                              ifIdCafInfo = caf_info })
   = vcat [ hang (pprPrefixIfDeclBndr (ss_how_much ss) (occName var) <+> dcolon)
               2 (pprIfaceSigmaType (ss_forall ss) ty)
          , ppShowIface ss (ppr details)
-         , ppShowIface ss (pprIdInfos info) ]
+         , ppShowIface ss (pprIdInfos info caf_info) ]
 
 pprIfaceDecl _ (IfaceAxiom { ifName = name, ifTyCon = tycon
                            , ifAxBranches = branches })
   = hang (text "axiom" <+> ppr name <+> dcolon)
        2 (vcat $ map (pprAxBranch (ppr tycon)) branches)
 
-pprIdInfos :: [IfaceInfoItem] -> SDoc
-pprIdInfos [] = Outputable.empty
-pprIdInfos is = text "{-" <+> pprWithCommas ppr is <+> text "-}"
+pprIdInfos :: [IfaceInfoItem] -> IfaceCafInfo -> SDoc
+pprIdInfos is caf_info =
+    text "{-" <+>
+    fsep (punctuate comma $
+            (if caf_info == IfNoCafRefs then (ppr caf_info :) else id)
+              (map ppr is)) <+>
+    text "-}"
 
 pprCType :: Maybe CType -> SDoc
 pprCType Nothing      = Outputable.empty
@@ -1261,6 +1267,10 @@ instance Outputable IfaceInfoItem where
   ppr (HsArity arity)       = text "Arity:" <+> int arity
   ppr (HsStrictness str) = text "Strictness:" <+> pprIfaceStrictSig str
   ppr HsLevity              = text "Never levity-polymorphic"
+
+instance Outputable IfaceCafInfo where
+  ppr IfNoCafRefs           = text "HasNoCafRefs"
+  ppr IfMayHaveCafRefs      = text "MayHaveCafRefs"
 
 instance Outputable IfaceJoinInfo where
   ppr IfaceNotJoinPoint   = empty
