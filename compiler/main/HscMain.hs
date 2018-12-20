@@ -125,7 +125,7 @@ import CoreToStg        ( coreToStg )
 import qualified StgCmm ( codeGen )
 import StgSyn           ( StgTopBinding )
 import StgFVs           ( annTopBindingsFreeVars )
-import StgCafAnal       ( stgCafAnal )
+import StgCafAnal       ( stgCafAnal, updateStgCafInfos )
 import CostCentre
 import ProfInit
 import TyCon
@@ -1440,11 +1440,12 @@ doCodeGen hsc_env this_mod data_tycons
     let dflags = hsc_dflags hsc_env
 
     let caf_infos = stgCafAnal stg_binds
+    let stg_binds' = updateStgCafInfos stg_binds caf_infos
 
     dumpIfSet_dyn dflags Opt_D_dump_stg "CAF analysis:" $
       ppr (dVarEnvElts (alwaysUnsafeUfmToUdfm caf_infos))
 
-    let stg_binds_w_fvs = annTopBindingsFreeVars stg_binds
+    let stg_binds_w_fvs = annTopBindingsFreeVars stg_binds'
 
     let cmm_stream :: Stream IO CmmGroup ()
         cmm_stream = {-# SCC "StgCmm" #-}

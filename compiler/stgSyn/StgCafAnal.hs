@@ -20,7 +20,14 @@ interface in memory longer than before.
 See comments around stgCafAnal below for an overview of the new pass.
 -}
 
-module StgCafAnal (stgCafAnal) where
+{-# LANGUAGE CPP #-}
+
+module StgCafAnal
+    ( stgCafAnal
+    , updateStgCafInfos
+    ) where
+
+#include "HsVersions.h"
 
 import GhcPrelude
 
@@ -30,6 +37,7 @@ import Name (Name)
 import NameEnv
 import Outputable
 import StgSyn
+import Util
 import VarSet
 
 import Data.Graph (SCC (..))
@@ -245,3 +253,30 @@ fvHasCafRefs env v = caf_info == MayHaveCafRefs
     caf_info = case lookupNameEnv env (idName v) of
       Nothing     -> idCafInfo v -- TODO check that this is really an imported name and not a bug!
       Just (_, c) -> c
+
+--------------------------------------------------------------------------------
+
+-- | Update CafInfos of top-level binders of a STG program.
+updateStgCafInfos :: [StgTopBinding] -> NameEnv (Id, CafInfo) -> [StgTopBinding]
+updateStgCafInfos pgm env = map update pgm
+  where
+    update :: StgTopBinding -> StgTopBinding
+    update (StgTopLifted (StgNonRec bndr rhs))
+      = StgTopLifted (uncurry StgNonRec (update_pair (bndr, rhs)))
+
+    update (StgTopLifted (StgRec pairs))
+      = StgTopLifted (StgRec (map update_pair pairs))
+
+    update (StgTopStringLit bndr rhs)
+      = uncurry StgTopStringLit (update_pair (bndr, rhs))
+
+    update_pair (bndr, rhs)
+      = case lookupNameEnv env (idName bndr) of
+          Nothing ->
+            pprPanic "updateStgCafInfos" $
+              text "Name not in env:" <+> ppr (idName bndr) $$
+              text "Id:" <+> ppr bndr $$
+              text "Env:" <+> ppr env
+          Just (bndr_, caf_info) ->
+            ASSERT(bndr == bndr_)
+            (setIdCafInfo bndr caf_info, rhs)
