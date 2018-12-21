@@ -1461,8 +1461,6 @@ tcIdDetails _ (IfRecSelId tc naughty)
 tcIdInfo :: Bool -> TopLevelFlag -> Name -> Type -> [IfaceInfoItem] -> CafInfo -> IfL IdInfo
 tcIdInfo ignore_prags toplvl name ty info caf_info = do
     lcl_env <- getLclEnv
-    -- Set the CgInfo to something sensible but uninformative before
-    -- we start; default assumption is that it has CAFs
     let info0 = vanillaIdInfo `setCafInfo` caf_info
     let init_info | if_boot lcl_env = info0 `setUnfoldingInfo` BootUnfolding
                   | otherwise       = info0
