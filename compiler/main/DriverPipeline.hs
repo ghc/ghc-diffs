@@ -64,6 +64,8 @@ import Hooks
 import qualified GHC.LanguageExtensions as LangExt
 import FileCleanup
 import Ar
+import NameEnv
+import Id
 
 import Exception
 import System.Directory
@@ -87,15 +89,16 @@ import Data.Either      ( partitionEithers )
 preprocess :: HscEnv
            -> (FilePath, Maybe Phase) -- ^ filename and starting phase
            -> IO (DynFlags, FilePath)
-preprocess hsc_env (filename, mb_phase) =
-  ASSERT2(isJust mb_phase || isHaskellSrcFilename filename, text filename)
-  runPipeline anyHsc hsc_env (filename, fmap RealPhase mb_phase)
+preprocess hsc_env (filename, mb_phase) = do
+  MASSERT2(isJust mb_phase || isHaskellSrcFilename filename, text filename)
+  (dflags, fn, _) <- runPipeline anyHsc hsc_env (filename, fmap RealPhase mb_phase)
         Nothing
         -- We keep the processed file for the whole session to save on
         -- duplicated work in ghci.
         (Temporary TFL_GhcSession)
         Nothing{-no ModLocation-}
         []{-no foreign objects-}
+  return (dflags, fn)
 
 -- ---------------------------------------------------------------------------
 
@@ -219,17 +222,28 @@ compileOne' m_tc_result mHscMessage
                             (Temporary TFL_CurrentModule)
                             basename dflags next_phase (Just location)
             -- We're in --make mode: finish the compilation pipeline.
-            _ <- runPipeline StopLn hsc_env
+            (_, _, mb_caf_infos) <- runPipeline StopLn hsc_env
                               (output_fn,
                                Just (HscOut src_flavour mod_name st))
                               (Just basename)
                               Persistent
                               (Just location)
                               []
+
                   -- The object filename comes from the ModLocation
             o_time <- getModificationUTCTime object_filename
             let linkable = LM o_time this_mod [DotO object_filename]
-            return hmi0 { hm_linkable = Just linkable }
+
+            -- Update type env with caf infos
+            let caf_infos = case mb_caf_infos of
+                  Nothing -> pprPanic "compileOne'" (text "No caf infos when generating code!")
+                  Just caf_infos_ -> caf_infos_
+            let mod_details = hm_details hmi0
+            let type_env = updateTypeEnvCafInfos caf_infos (md_types mod_details)
+
+            return hmi0 { hm_linkable = Just linkable
+                        , hm_details = mod_details{ md_types = type_env }
+                        }
 
  where dflags0     = ms_hspp_opts summary
 
@@ -309,7 +323,7 @@ compileForeign hsc_env lang stub_c = do
               LangObjc -> Cobjc
               LangObjcxx -> Cobjcxx
               RawObject -> panic "compileForeign: should be unreachable"
-        (_, stub_o) <- runPipeline StopLn hsc_env
+        (_, stub_o, _) <- runPipeline StopLn hsc_env
                        (stub_c, Just (RealPhase phase))
                        Nothing (Temporary TFL_GhcSession)
                        Nothing{-no ModLocation-}
@@ -523,7 +537,7 @@ compileFile hsc_env stop_phase (src, mb_phase) = do
                         As _ | split -> SplitAs
                         _            -> stop_phase
 
-   ( _, out_file) <- runPipeline stop_phase' hsc_env
+   ( _, out_file, _) <- runPipeline stop_phase' hsc_env
                             (src, fmap RealPhase mb_phase) Nothing output
                             Nothing{-no ModLocation-} []
    return out_file
@@ -562,7 +576,9 @@ runPipeline
   -> PipelineOutput             -- ^ Output filename
   -> Maybe ModLocation          -- ^ A ModLocation, if this is a Haskell module
   -> [FilePath]                 -- ^ foreign objects
-  -> IO (DynFlags, FilePath)    -- ^ (final flags, output filename)
+  -> IO (DynFlags, FilePath, Maybe CafInfoEnv)
+                                -- ^ (final flags, output filename,
+                                --    caf infos when generating code)
 runPipeline stop_phase hsc_env0 (input_fn, mb_phase)
              mb_basename output maybe_loc foreign_os
 
@@ -645,14 +661,17 @@ runPipeline'
   -> FilePath                   -- ^ Input filename
   -> Maybe ModLocation          -- ^ A ModLocation, if this is a Haskell module
   -> [FilePath]                 -- ^ foreign objects, if we have one
-  -> IO (DynFlags, FilePath)    -- ^ (final flags, output filename)
+  -> IO (DynFlags, FilePath, Maybe CafInfoEnv)
+                                -- ^ (final flags, output filename, caf infos
+                                --    when generating code)
 runPipeline' start_phase hsc_env env input_fn
              maybe_loc foreign_os
   = do
   -- Execute the pipeline...
-  let state = PipeState{ hsc_env, maybe_loc, foreign_os = foreign_os }
+  let state = PipeState{ hsc_env, maybe_loc, foreign_os = foreign_os, caf_env = Nothing }
 
-  evalP (pipeLoop start_phase input_fn) env state
+  (state', (dflags, fn)) <- runP (pipeLoop start_phase input_fn) env state
+  return (dflags, fn, caf_env state')
 
 -- ---------------------------------------------------------------------------
 -- outer pipeline loop
@@ -1113,8 +1132,9 @@ runPhase (HscOut src_flavour mod_name result) _ dflags = do
                     PipeState{hsc_env=hsc_env'} <- getPipeState
                     let mod_summary' = mod_summary{ ms_location = location }
 
-                    (outputFilename, mStub, foreign_files) <- liftIO $
+                    (outputFilename, mStub, foreign_files, caf_infos) <- liftIO $
                       hscGenHardCode hsc_env' cgguts mod_summary' mod_iface output_fn
+                    setCafInfos caf_infos
                     stub_o <- liftIO (mapM (compileStub hsc_env') mStub)
                     foreign_os <- liftIO $
                       mapM (uncurry (compileForeign hsc_env')) foreign_files

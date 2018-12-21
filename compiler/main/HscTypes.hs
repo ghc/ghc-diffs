@@ -98,8 +98,12 @@ module HscTypes (
         extendTypeEnv, extendTypeEnvList,
         extendTypeEnvWithIds, plusTypeEnv,
         lookupTypeEnv,
+        updateTypeEnvCafInfos,
         typeEnvElts, typeEnvTyCons, typeEnvIds, typeEnvPatSyns,
         typeEnvDataCons, typeEnvCoAxioms, typeEnvClasses,
+
+        -- * CafInfo env
+        CafInfoEnv,
 
         -- * MonadThings
         MonadThings(..),
@@ -164,7 +168,7 @@ import NameEnv
 import VarSet
 import Var
 import Id
-import IdInfo           ( IdDetails(..), RecSelParent(..))
+import IdInfo           ( IdDetails(..), RecSelParent(..), CafInfo )
 import Type
 
 import ApiAnnotation    ( ApiAnns )
@@ -2190,6 +2194,34 @@ tyThingId :: TyThing -> Id
 tyThingId (AnId id)                   = id
 tyThingId (AConLike (RealDataCon dc)) = dataConWrapId dc
 tyThingId other                       = pprPanic "tyThingId" (ppr other)
+
+updateTypeEnvCafInfos :: CafInfoEnv -> TypeEnv -> TypeEnv
+updateTypeEnvCafInfos caf_infos = mapNameEnv f
+  where
+    f (AnId id) =
+      case lookupNameEnv caf_infos (idName id) of
+        Nothing ->
+          pprPanic "updateTypeEnvCafInfos" $
+            text "id not in env:" <+> ppr id $$
+            text "id name:" <+> ppr (idName id) $$
+            text "env:" <+> ppr caf_infos
+        Just (id_, caf_info) ->
+          ASSERT(id == id_)
+          AnId (id `setIdCafInfo` caf_info)
+    f x = x -- AConLike, ATyCon, ACoAxiom
+
+{-
+************************************************************************
+*                                                                      *
+                CafInfo analysis stuff
+*                                                                      *
+************************************************************************
+-}
+
+-- TODO: Only recording Ids in NameEnv just to be able to get useful debug
+-- prints. Maybe only do it in debug build.
+
+type CafInfoEnv = NameEnv (Id, CafInfo)
 
 {-
 ************************************************************************

@@ -31,6 +31,7 @@ module StgCafAnal
 
 import GhcPrelude
 
+import HscTypes (CafInfoEnv)
 import Id
 import IdInfo
 import Name (Name)
@@ -150,9 +151,6 @@ annTopBindingsDeps bs = zip bs (map top_bind bs)
 --------------------------------------------------------------------------------
 -- * CAF analysis
 
--- TODO: Only recording Ids in NameEnv just to be able to get useful debug
--- prints. Maybe only do it in debug build.
-
 -- | Given an STG program return a mapping from binders to their CafInfos. We
 -- compute CafInfos in three steps:
 --
@@ -178,7 +176,7 @@ annTopBindingsDeps bs = zip bs (map top_bind bs)
 -- The `Id` in the range of the map is to help debugging (NameEnv only holds
 -- Uniques of keys).
 --
-stgCafAnal :: [StgTopBinding] -> NameEnv (Id, CafInfo)
+stgCafAnal :: [StgTopBinding] -> CafInfoEnv
 stgCafAnal pgm = foldr update_env emptyNameEnv pgm_sorted
   where
     -- Program with dependency annotations
@@ -213,7 +211,7 @@ depSort = concatMap get_binds . depAnal defs uses
 
 -- | Given CafInfos of dependencies and a top-level binding return CafInfos of
 -- Ids that the binding binds.
-cafAnalTopBinding :: NameEnv (Id, CafInfo) -> (StgTopBinding, FVs) -> NameEnv (Id, CafInfo)
+cafAnalTopBinding :: CafInfoEnv -> (StgTopBinding, FVs) -> CafInfoEnv
 
 cafAnalTopBinding _ (StgTopStringLit bndr _, _)
   = unitNameEnv (idName bndr) (bndr, NoCafRefs)
@@ -244,10 +242,10 @@ rhsIsCaf (StgRhsClosure _ _ upd args _) = null args && isUpdatable upd
 -- these arguments.
 rhsIsCaf StgRhsCon{}                    = False
 
-fvsHaveCafRefs :: NameEnv (Id, CafInfo) -> FVs -> Bool
+fvsHaveCafRefs :: CafInfoEnv -> FVs -> Bool
 fvsHaveCafRefs env fvs = any (fvHasCafRefs env) (dVarSetElems fvs)
 
-fvHasCafRefs :: NameEnv (Id, CafInfo) -> Var -> Bool
+fvHasCafRefs :: CafInfoEnv -> Var -> Bool
 fvHasCafRefs env v = caf_info == MayHaveCafRefs
   where
     caf_info = case lookupNameEnv env (idName v) of
@@ -257,7 +255,7 @@ fvHasCafRefs env v = caf_info == MayHaveCafRefs
 --------------------------------------------------------------------------------
 
 -- | Update CafInfos of top-level binders of a STG program.
-updateStgCafInfos :: [StgTopBinding] -> NameEnv (Id, CafInfo) -> [StgTopBinding]
+updateStgCafInfos :: [StgTopBinding] -> CafInfoEnv -> [StgTopBinding]
 updateStgCafInfos pgm env = map update pgm
   where
     update :: StgTopBinding -> StgTopBinding

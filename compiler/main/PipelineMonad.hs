@@ -3,10 +3,10 @@
 --
 -- Defined in separate module so that it can safely be imported from Hooks
 module PipelineMonad (
-    CompPipeline(..), evalP
+    CompPipeline(..), runP
   , PhasePlus(..)
   , PipeEnv(..), PipeState(..), PipelineOutput(..)
-  , getPipeEnv, getPipeState, setDynFlags, setModLocation, setForeignOs
+  , getPipeEnv, getPipeState, setDynFlags, setCafInfos, setModLocation, setForeignOs
   ) where
 
 import GhcPrelude
@@ -23,8 +23,8 @@ import Control.Monad
 
 newtype CompPipeline a = P { unP :: PipeEnv -> PipeState -> IO (PipeState, a) }
 
-evalP :: CompPipeline a -> PipeEnv -> PipeState -> IO a
-evalP f env st = liftM snd $ unP f env st
+runP :: CompPipeline a -> PipeEnv -> PipeState -> IO (PipeState, a)
+runP = unP
 
 instance Functor CompPipeline where
     fmap = liftM
@@ -68,10 +68,13 @@ data PipeState = PipeState {
        maybe_loc :: Maybe ModLocation,
           -- ^ the ModLocation.  This is discovered during compilation,
           -- in the Hsc phase where we read the module header.
-       foreign_os :: [FilePath]
+       foreign_os :: [FilePath],
          -- ^ additional object files resulting from compiling foreign
          -- code. They come from two sources: foreign stubs, and
          -- add{C,Cxx,Objc,Objcxx}File from template haskell
+       caf_env :: Maybe CafInfoEnv
+         -- ^ Caf infos of top-level binders in the curent module. Becomes
+         -- available after hscGenHardCode (so only when generating code).
   }
 
 data PipelineOutput
@@ -100,6 +103,10 @@ instance HasDynFlags CompPipeline where
 setDynFlags :: DynFlags -> CompPipeline ()
 setDynFlags dflags = P $ \_env state ->
   return (state{hsc_env= (hsc_env state){ hsc_dflags = dflags }}, ())
+
+setCafInfos :: CafInfoEnv -> CompPipeline ()
+setCafInfos caf_infos = P $ \_env state ->
+  return (state{caf_env = Just caf_infos}, ())
 
 setModLocation :: ModLocation -> CompPipeline ()
 setModLocation loc = P $ \_env state ->
