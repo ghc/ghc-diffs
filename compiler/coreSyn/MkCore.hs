@@ -774,6 +774,7 @@ mkRuntimeErrorId name
  where
     bottoming_info = vanillaIdInfo `setStrictnessInfo`    strict_sig
                                    `setArityInfo`         1
+                                   `setCafInfo`           MayHaveCafRefs
                         -- Make arity and strictness agree
 
         -- Do *not* mark them as NoCafRefs, because they can indeed have
@@ -886,6 +887,7 @@ aBSENT_ERROR_ID
    -- Not runtime-rep polymorphic. aBSENT_ERROR_ID is only used for
    -- lifted-type things; see Note [Absent errors] in WwLib
    arity_info = vanillaIdInfo `setArityInfo` 1
+                              `setCafInfo` MayHaveCafRefs
    -- NB: no bottoming strictness info, unlike other error-ids.
    -- See Note [aBSENT_ERROR_ID]
 

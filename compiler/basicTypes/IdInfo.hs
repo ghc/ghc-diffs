@@ -241,7 +241,7 @@ data IdInfo
         ruleInfo        :: RuleInfo,            -- ^ Specialisations of the 'Id's function which exist
                                                 -- See Note [Specialisations and RULES in IdInfo]
         unfoldingInfo   :: Unfolding,           -- ^ The 'Id's unfolding
-        cafInfo         :: CafInfo,             -- ^ 'Id' CAF info
+        cafInfo         :: Maybe CafInfo,       -- ^ 'Id' CAF info
         oneShotInfo     :: OneShotInfo,         -- ^ Info about a lambda-bound variable, if the 'Id' is one
         inlinePragInfo  :: InlinePragma,        -- ^ Any inline pragma atached to the 'Id'
         occInfo         :: OccInfo,             -- ^ How the 'Id' occurs in the program
@@ -278,7 +278,7 @@ setArityInfo      info ar  = info { arityInfo = ar  }
 setCallArityInfo :: IdInfo -> ArityInfo -> IdInfo
 setCallArityInfo info ar  = info { callArityInfo = ar  }
 setCafInfo :: IdInfo -> CafInfo -> IdInfo
-setCafInfo        info caf = info { cafInfo = caf }
+setCafInfo        info caf = info { cafInfo = Just caf }
 
 setOneShotInfo :: IdInfo -> OneShotInfo -> IdInfo
 setOneShotInfo      info lb = {-lb `seq`-} info { oneShotInfo = lb }
@@ -293,7 +293,7 @@ setStrictnessInfo info dd = dd `seq` info { strictnessInfo = dd }
 vanillaIdInfo :: IdInfo
 vanillaIdInfo
   = IdInfo {
-            cafInfo             = vanillaCafInfo,
+            cafInfo             = Nothing,
             arityInfo           = unknownArity,
             ruleInfo            = emptyRuleInfo,
             unfoldingInfo       = noUnfolding,
@@ -458,10 +458,6 @@ data CafInfo
         | NoCafRefs                     -- ^ A function or static constructor
                                         -- that refers to no CAFs.
         deriving (Eq, Ord)
-
--- | Assumes that the 'Id' has CAF references: definitely safe
-vanillaCafInfo :: CafInfo
-vanillaCafInfo = MayHaveCafRefs
 
 mayHaveCafRefs :: CafInfo -> Bool
 mayHaveCafRefs  MayHaveCafRefs = True

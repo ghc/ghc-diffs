@@ -129,7 +129,7 @@ getStgToDo dflags =
     -- Important that unarisation comes first
     -- See Note [StgCse after unarisation] in StgCse
     , optional Opt_StgCSE StgCSE
-    , optional Opt_StgLiftLams StgLiftLams
+    -- , optional Opt_StgLiftLams StgLiftLams
     , optional Opt_StgStats StgStats
     ] where
       optional opt = runWhen (gopt opt dflags)

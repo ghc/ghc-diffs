@@ -59,7 +59,7 @@ import Control.Monad
 -- For closures bound at top level, allocate in static space.
 -- They should have no free variables.
 
-cgTopRhsClosure :: DynFlags
+cgTopRhsClosure :: HasCallStack => DynFlags
                 -> RecFlag              -- member of a recursive group?
                 -> Id
                 -> CostCentreStack      -- Optional cost centre annotation

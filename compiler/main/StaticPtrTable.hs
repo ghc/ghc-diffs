@@ -139,6 +139,7 @@ import Platform
 import PrelNames
 import TcEnv (lookupGlobal)
 import Type
+import Util
 
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State
@@ -253,7 +254,7 @@ sptCreateStaticBinds hsc_env this_mod binds
 --
 -- @fps@ is a list associating each binding corresponding to a static entry with
 -- its fingerprint.
-sptModuleInitCode :: Module -> [SptEntry] -> SDoc
+sptModuleInitCode :: HasCallStack => Module -> [SptEntry] -> SDoc
 sptModuleInitCode _ [] = Outputable.empty
 sptModuleInitCode this_mod entries = vcat
     [ text "static void hs_spt_init_" <> ppr this_mod

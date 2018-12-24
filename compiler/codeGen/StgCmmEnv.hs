@@ -119,7 +119,7 @@ addBindsC new_bindings = do
                               new_bindings
         setBinds new_binds
 
-getCgIdInfo :: Id -> FCode CgIdInfo
+getCgIdInfo :: HasCallStack => Id -> FCode CgIdInfo
 getCgIdInfo id
   = do  { dflags <- getDynFlags
         ; local_binds <- getBinds -- Try local bindings first

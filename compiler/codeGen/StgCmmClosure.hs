@@ -531,7 +531,7 @@ data CallMethod
         CLabel          --   The code label
         RepArity        --   Its arity
 
-getCallMethod :: DynFlags
+getCallMethod :: HasCallStack => DynFlags
               -> Name           -- Function being applied
               -> Id             -- Function Id used to chech if it can refer to
                                 -- CAF's and whether the function is tail-calling
@@ -560,14 +560,18 @@ getCallMethod dflags _ id _ n_args v_args _cg_loc
   -- self-recursive tail calls] in StgCmmExpr for more details
   = JumpToIt block_id args
 
-getCallMethod dflags name id (LFReEntrant _ _ arity _ _) n_args _v_args _cg_loc
+getCallMethod dflags name id (LFReEntrant top_lvl _ arity _ _) n_args _v_args _cg_loc
               _self_loop_info
   | n_args == 0 -- No args at all
   && not (gopt Opt_SccProfilingOn dflags)
      -- See Note [Evaluating functions with profiling] in rts/Apply.cmm
   = ASSERT( arity /= 0 ) ReturnIt
   | n_args < arity = SlowCall        -- Not enough args
-  | otherwise      = DirectEntry (enterIdLabel dflags name (idCafInfo id)) arity
+  | otherwise      = DirectEntry (enterIdLabel dflags name caf_info) arity
+  where
+    caf_info = case top_lvl of
+      TopLevel -> idCafInfo id
+      NotTopLevel -> MayHaveCafRefs -- TODO (osa): Not sure about this
 
 getCallMethod _ _name _ LFUnlifted n_args _v_args _cg_loc _self_loop_info
   = ASSERT( n_args == 0 ) ReturnIt
@@ -577,7 +581,7 @@ getCallMethod _ _name _ (LFCon _) n_args _v_args _cg_loc _self_loop_info
     -- n_args=0 because it'd be ill-typed to apply a saturated
     --          constructor application to anything
 
-getCallMethod dflags name id (LFThunk _ _ updatable std_form_info is_fun)
+getCallMethod dflags name id (LFThunk top_lvl _ updatable std_form_info is_fun)
               n_args _v_args _cg_loc _self_loop_info
   | is_fun      -- it *might* be a function, so we must "call" it (which is always safe)
   = SlowCall    -- We cannot just enter it [in eval/apply, the entry code
@@ -606,8 +610,12 @@ getCallMethod dflags name id (LFThunk _ _ updatable std_form_info is_fun)
 
   | otherwise        -- Jump direct to code for single-entry thunks
   = ASSERT( n_args == 0 )
-    DirectEntry (thunkEntryLabel dflags name (idCafInfo id) std_form_info
+    DirectEntry (thunkEntryLabel dflags name caf_info std_form_info
                 updatable) 0
+  where
+    caf_info = case top_lvl of
+      TopLevel -> idCafInfo id
+      NotTopLevel -> MayHaveCafRefs -- TODO (osa): Not sure about this
 
 getCallMethod _ _name _ (LFUnknown True) _n_arg _v_args _cg_locs _self_loop_info
   = SlowCall -- might be a function
@@ -847,7 +855,7 @@ closureLocalEntryLabel dflags
   | tablesNextToCode dflags = toInfoLbl  . closureInfoLabel
   | otherwise               = toEntryLbl . closureInfoLabel
 
-mkClosureInfoTableLabel :: Id -> LambdaFormInfo -> CLabel
+mkClosureInfoTableLabel :: HasCallStack => Id -> LambdaFormInfo -> CLabel
 mkClosureInfoTableLabel id lf_info
   = case lf_info of
         LFThunk _ _ upd_flag (SelectorThunk offset) _
@@ -856,8 +864,8 @@ mkClosureInfoTableLabel id lf_info
         LFThunk _ _ upd_flag (ApThunk arity) _
                       -> mkApInfoTableLabel upd_flag arity
 
-        LFThunk{}     -> std_mk_lbl name cafs
-        LFReEntrant{} -> std_mk_lbl name cafs
+        LFThunk top_lvl _ _ _ _ -> std_mk_lbl name (cafs top_lvl)
+        LFReEntrant top_lvl _ _ _ _ -> std_mk_lbl name (cafs top_lvl)
         _other        -> panic "closureInfoTableLabel"
 
   where
@@ -866,7 +874,8 @@ mkClosureInfoTableLabel id lf_info
     std_mk_lbl | is_local  = mkLocalInfoTableLabel
                | otherwise = mkInfoTableLabel
 
-    cafs     = idCafInfo id
+    cafs TopLevel = idCafInfo id
+    cafs NotTopLevel = MayHaveCafRefs -- TODO(osa): Not sure about this
     is_local = isDataConWorkId id
        -- Make the _info pointer for the implicit datacon worker
        -- binding local. The reason we can do this is that importing

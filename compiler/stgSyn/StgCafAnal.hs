@@ -245,7 +245,7 @@ rhsIsCaf StgRhsCon{}                    = False
 fvsHaveCafRefs :: CafInfoEnv -> FVs -> Bool
 fvsHaveCafRefs env fvs = any (fvHasCafRefs env) (dVarSetElems fvs)
 
-fvHasCafRefs :: CafInfoEnv -> Var -> Bool
+fvHasCafRefs :: HasCallStack => CafInfoEnv -> Var -> Bool
 fvHasCafRefs env v = caf_info == MayHaveCafRefs
   where
     caf_info = case lookupNameEnv env (idName v) of

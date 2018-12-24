@@ -44,8 +44,9 @@ seqOneShot l = l `seq` ()
 seqRuleInfo :: RuleInfo -> ()
 seqRuleInfo (RuleInfo rules fvs) = seqRules rules `seq` seqDVarSet fvs
 
-seqCaf :: CafInfo -> ()
-seqCaf c = c `seq` ()
+seqCaf :: Maybe CafInfo -> ()
+seqCaf Nothing = ()
+seqCaf (Just c) = c `seq` ()
 
 seqRules :: [CoreRule] -> ()
 seqRules [] = ()

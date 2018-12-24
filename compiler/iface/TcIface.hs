@@ -638,7 +638,7 @@ tc_iface_decl _ ignore_prags (IfaceId {ifName = name, ifType = iface_type,
                                        ifIdCafInfo = caf_info })
   = do  { ty <- tcIfaceType iface_type
         ; details <- tcIdDetails ty details
-        ; info <- tcIdInfo ignore_prags TopLevel name ty info (tcIfaceCafInfo caf_info)
+        ; info <- tcIdInfo ignore_prags TopLevel name ty info (Just (tcIfaceCafInfo caf_info))
         ; return (AnId (mkGlobalId details name ty info)) }
 
 tc_iface_decl _ _ (IfaceData {ifName = tc_name,
@@ -1458,10 +1458,10 @@ tcIdDetails _ (IfRecSelId tc naughty)
     tyThingPatSyn (AConLike (PatSynCon ps)) = ps
     tyThingPatSyn _ = panic "tcIdDetails: expecting patsyn"
 
-tcIdInfo :: Bool -> TopLevelFlag -> Name -> Type -> [IfaceInfoItem] -> CafInfo -> IfL IdInfo
-tcIdInfo ignore_prags toplvl name ty info caf_info = do
+tcIdInfo :: Bool -> TopLevelFlag -> Name -> Type -> [IfaceInfoItem] -> Maybe CafInfo -> IfL IdInfo
+tcIdInfo ignore_prags toplvl name ty info mb_caf_info = do
     lcl_env <- getLclEnv
-    let info0 = vanillaIdInfo `setCafInfo` caf_info
+    let info0 = vanillaIdInfo{ cafInfo = mb_caf_info }
     let init_info | if_boot lcl_env = info0 `setUnfoldingInfo` BootUnfolding
                   | otherwise       = info0
     if ignore_prags
@@ -1485,7 +1485,7 @@ tcLocalIdInfo :: Name -> Type -> [IfaceInfoItem] -> IfL IdInfo
 tcLocalIdInfo name ty info =
     tcIdInfo False {- Don't ignore prags; we are inside one! -}
              NotTopLevel name ty info
-             MayHaveCafRefs {- More precise CafInfo will be computed before codegen -}
+             Nothing {- More precise CafInfo will be computed before codegen -}
 
 tcJoinInfo :: IfaceJoinInfo -> Maybe JoinArity
 tcJoinInfo (IfaceJoinPoint ar) = Just ar

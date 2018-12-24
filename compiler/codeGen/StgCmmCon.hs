@@ -57,7 +57,7 @@ import Data.Char
 --      Top-level constructors
 ---------------------------------------------------------------
 
-cgTopRhsCon :: DynFlags
+cgTopRhsCon :: HasCallStack => DynFlags
             -> Id               -- Name of thing bound to this RHS
             -> DataCon          -- Id
             -> [NonVoid StgArg] -- Args
@@ -136,7 +136,7 @@ buildDynCon binder actually_bound cc con args
          buildDynCon' dflags (targetPlatform dflags) binder actually_bound cc con args
 
 
-buildDynCon' :: DynFlags
+buildDynCon' :: HasCallStack => DynFlags
              -> Platform
              -> Id -> Bool
              -> CostCentreStack

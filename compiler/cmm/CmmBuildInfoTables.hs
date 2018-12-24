@@ -29,6 +29,7 @@ import SMRep
 import UniqSupply
 import CostCentre
 import StgCmmHeap
+import Util
 
 import PprCmm()
 import Control.Monad
@@ -546,7 +547,7 @@ getCAFs cafEnv decls =
 -- | Get the list of blocks that correspond to the entry points for
 -- FUN_STATIC closures.  These are the blocks for which if we have an
 -- SRT we can merge it with the static closure. [FUN]
-getStaticFuns :: [CmmDecl] -> [(BlockId, CLabel)]
+getStaticFuns :: HasCallStack => [CmmDecl] -> [(BlockId, CLabel)]
 getStaticFuns decls =
   [ (g_entry g, lbl)
   | CmmProc top_info _ _ g <- decls
@@ -843,7 +844,7 @@ buildSRT dflags refs = do
 -- | Update info tables with references to their SRTs. Also generate
 -- static closures, splicing in SRT fields as necessary.
 updInfoSRTs
-  :: DynFlags
+  :: HasCallStack => DynFlags
   -> LabelMap CLabel               -- SRT labels for each block
   -> LabelMap [SRTEntry]           -- SRTs to merge into FUN_STATIC closures
   -> CmmDecl

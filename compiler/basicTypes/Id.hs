@@ -92,7 +92,7 @@ module Id (
         idCallArity, idFunRepArity,
         idUnfolding, realIdUnfolding,
         idSpecialisation, idCoreRules, idHasRules,
-        idCafInfo,
+        idCafInfo, idCafInfo_maybe,
         idOneShotInfo, idStateHackOneShotInfo,
         idOccInfo,
         isNeverLevPolyId,
@@ -730,8 +730,14 @@ setIdSpecialisation id spec_info = modifyIdInfo (`setRuleInfo` spec_info) id
 
         ---------------------------------
         -- CAF INFO
-idCafInfo :: Id -> CafInfo
-idCafInfo id = cafInfo (idInfo id)
+idCafInfo :: HasCallStack => Id -> CafInfo
+idCafInfo id =
+    case cafInfo (idInfo id) of
+      Nothing -> pprPanic "idCafInfo" (text "CafInfo of id not available:" <+> ppr id)
+      Just caf_info -> caf_info
+
+idCafInfo_maybe :: Id -> Maybe CafInfo
+idCafInfo_maybe = cafInfo . idInfo
 
 setIdCafInfo :: Id -> CafInfo -> Id
 setIdCafInfo id caf_info = modifyIdInfo (`setCafInfo` caf_info) id

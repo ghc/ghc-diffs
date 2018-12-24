@@ -1607,7 +1607,7 @@ tyThingToIfaceDecl (AConLike cl)  = case cl of
     PatSynCon ps   -> patSynToIfaceDecl ps
 
 --------------------------
-idToIfaceDecl :: Id -> IfaceDecl
+idToIfaceDecl :: HasCallStack => Id -> IfaceDecl
 -- The Id is already tidied, so that locally-bound names
 -- (lambdas, for-alls) already have non-clashing OccNames
 -- We can't tidy it here, locally, because it may have
@@ -1617,7 +1617,10 @@ idToIfaceDecl id
               ifType      = toIfaceType (idType id),
               ifIdDetails = toIfaceIdDetails (idDetails id),
               ifIdInfo    = toIfaceIdInfo (idInfo id),
-              ifIdCafInfo = toIfaceIdCafInfo (idCafInfo id) }
+              ifIdCafInfo = maybe IfMayHaveCafRefs toIfaceIdCafInfo (idCafInfo_maybe id) }
+                -- Assume CAFFY if Id doesn't have CafInfo. This happens when
+                -- building boot files. (TODO (osa): Check that we're really
+                -- building a boot file when CafInfo is not available.
 
 --------------------------
 dataConToIfaceDecl :: DataCon -> IfaceDecl
@@ -1626,7 +1629,8 @@ dataConToIfaceDecl dataCon
               ifType      = toIfaceType (dataConUserType dataCon),
               ifIdDetails = IfVanillaId,
               ifIdInfo    = [],
-              ifIdCafInfo = IfMayHaveCafRefs }
+              ifIdCafInfo = IfNoCafRefs }
+                -- TOOD (osa): Make sure that CafInfo is right
 
 --------------------------
 coAxiomToIfaceDecl :: CoAxiom br -> IfaceDecl
